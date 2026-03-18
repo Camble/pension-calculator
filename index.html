@@ -1,572 +1,1042 @@
 <!DOCTYPE html>
-<script src="/__replco/static/devtools/eruda/3.2.3/eruda.js"></script>
-<script src="/__replco/static/devtools/injected.js"
-    onerror="parent.postMessage({event:'error',payload:'script.onerror: Failed to load '+event.target.src},'https://replit.com')"></script>
-<!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pension Calculator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        .section-card {
-            background-color: #ffffff;
-            border-radius: 0.5rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            margin-bottom: 1.5rem;
-            padding: 1.5rem;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pension Calculator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/patternomaly@1.3.2/dist/patternomaly.js"></script>
+<style>
+  .section-card {
+    background-color: #ffffff;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
+  }
+  .summary-section { background-color: #f8fafc; border-left: 4px solid #f97316; }
+  .chart-section   { background-color: #fafafa;  border-left: 4px solid #f97316; }
+  .table-section   { background-color: #f9fafb;  border-left: 4px solid #f97316; }
+  .strategy-radio { display: none; }
+  .strategy-label {
+    display: block;
+    padding: 0.75rem 1rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: #fff;
+  }
+  .strategy-radio:checked + .strategy-label {
+    border-color: #f97316;
+    background: #fff7ed;
+  }
+  .strategy-label:hover { border-color: #fdba74; }
+  .strategy-name { font-weight: 600; color: #374151; font-size: 0.875rem; }
+  .strategy-desc { font-size: 0.75rem; color: #6b7280; margin-top: 0.2rem; }
+  tr.income-gap { background-color: #fee2e2 !important; }
+  tr.income-gap:hover { background-color: #fecaca !important; }
+  #strategy3Config { display: none; }
+  #customBands { display: none; }
 
-        .summary-section {
-            background-color: #f8fafc;
-            border-left: 4px solid #f97316;
-        }
+  /* Table cell tints — drawdown source colours matching the chart */
+  td.cell-pension-taxfree  { background-color: rgba(75,192,192,0.12); }
+  td.cell-pension-taxable  { background-color: rgba(153,102,255,0.12); }
+  td.cell-isa-drawdown     { background-color: rgba(255,159,64,0.12); }
+  td.cell-state-pension    { background-color: rgba(255,99,132,0.10); }
+  td.cell-lumpsum          { background-color: rgba(255,206,86,0.15); }
 
-        .chart-section {
-            background-color: #fafafa;
-            border-left: 4px solid #f97316;
-        }
+  /* Total income health */
+  td.cell-income-ok        { background-color: rgba(34,197,94,0.12); color: #166534; font-weight: 600; }
+  td.cell-income-warn      { background-color: rgba(251,191,36,0.20); color: #92400e; font-weight: 600; }
+  td.cell-income-gap       { background-color: rgba(239,68,68,0.15); color: #991b1b; font-weight: 600; }
 
-        .table-section {
-            background-color: #f9fafb;
-            border-left: 4px solid #f97316;
-        }
-    </style>
+  /* Pot health — applied inline via JS as background-color */
+  td.cell-pot              { font-variant-numeric: tabular-nums; }
+
+  /* Retirement age marker */
+  tr.retirement-year td    { border-top: 2px solid #f97316; }
+  tr.retirement-year td:first-child { font-weight: 700; color: #ea580c; }
+</style>
 </head>
-
 <body class="bg-gray-100 p-4">
-    <div class="container mx-auto">
-        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Pension & ISA Retirement Calculator</h1>
-        <form id="calculatorForm" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="section-card">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Personal Details</h2>
-                <div class="mb-4">
-                    <label for="currentAge" class="block text-gray-700 text-sm font-bold mb-2">Current Age:</label>
-                    <input type="number" id="currentAge" name="currentAge"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        value="21">
-                </div>
-                <div class="mb-4">
-                    <label for="retirementAge" class="block text-gray-700 text-sm font-bold mb-2">Desired Retirement
-                        Age:</label>
-                    <input type="number" id="retirementAge" name="retirementAge"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        value="57">
-                </div>
-                <div class="mb-4">
-                    <label for="desiredPostTaxIncome" class="block text-gray-700 text-sm font-bold mb-2">Desired Annual
-                        Post-Tax Income in Retirement (£):</label>
-                    <input type="number" id="desiredPostTaxIncome" name="desiredPostTaxIncome"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        value="32000">
-                </div>
-                <div class="mb-4">
-                    <label for="postRetirementIncome" class="block text-gray-700 text-sm font-bold mb-2">Other Annual
-                        Income in Retirement (e.g., State Pension - £):</label>
-                    <input type="number" id="postRetirementIncome" name="postRetirementIncome"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        value="11973">
-                </div>
-            </div>
+<div class="container mx-auto">
+  <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Pension &amp; ISA Retirement Calculator</h1>
 
-            <div class="section-card">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Current Savings & Contributions</h2>
-                <div class="mb-4">
-                    <label for="currentPensionSavings" class="block text-gray-700 text-sm font-bold mb-2">Current
-                        Pension Savings (£):</label>
-                    <input type="number" id="currentPensionSavings" name="currentPensionSavings"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        value="0">
-                </div>
-                <div class="mb-4">
-                    <label for="annualPensionContributions" class="block text-gray-700 text-sm font-bold mb-2">Annual
-                        Pension Contributions (£):</label>
-                    <input type="number" id="annualPensionContributions" name="annualPensionContributions"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        value="0">
-                </div>
-                <div class="mb-4">
-                    <label for="currentIsaSavings" class="block text-gray-700 text-sm font-bold mb-2">Current ISA
-                        Savings (£):</label>
-                    <input type="number" id="currentIsaSavings" name="currentIsaSavings"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        value="0">
-                </div>
-                <div class="mb-4">
-                    <label for="annualIsaContributions" class="block text-gray-700 text-sm font-bold mb-2">Annual ISA
-                        Contributions (£):</label>
-                    <input type="number" id="annualIsaContributions" name="annualIsaContributions"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        value="0">
-                </div>
-            </div>
+  <form id="calculatorForm" class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-            <div class="section-card md:col-span-2">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Assumptions</h2>
-                <div class="mb-4">
-                    <label for="returnRate" class="block text-gray-700 text-sm font-bold mb-2">Annual Return Rate
-                        (%):</label>
-                    <input type="number" id="returnRate" name="returnRate"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        step="0.1" value="6">
-                </div>
-                <div class="mb-4">
-                    <label for="inflationRate" class="block text-gray-700 text-sm font-bold mb-2">Annual Inflation Rate
-                        (%):</label>
-                    <input type="number" id="inflationRate" name="inflationRate"
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        step="0.1" value="2.5">
-                </div>
-                <div class="mb-4">
-                    <input type="checkbox" id="takeLumpSum" name="takeLumpSum" class="mr-2" checked>
-                    <label for="takeLumpSum" class="text-gray-700 text-sm font-bold">Take 25% Tax-Free Lump Sum at
-                        Retirement</label>
-                </div>
-                <button type="submit"
-                    class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                    Calculate Retirement
-                </button>
-            </div>
-        </form>
-
-        <div id="results" class="mt-8 hidden">
-            <div class="summary-section section-card">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Summary</h2>
-                <p class="text-gray-700 mb-2">Projected Pension Pot at Retirement: <span id="projectedPensionPot"
-                        class="font-semibold"></span></p>
-                <p class="text-gray-700 mb-2">Projected ISA Savings at Retirement: <span id="projectedIsaSavings"
-                        class="font-semibold"></span></p>
-                <p class="text-gray-700 mb-2">Years to financial independence (before State Pension): <span
-                        id="yearsToIndependence" class="font-semibold"></span></p>
-                <p class="text-gray-700 mb-2">Years till funds run out (if applicable): <span id="yearsFundsRunOut"
-                        class="font-semibold"></span></p>
-            </div>
-
-            <div class="chart-section section-card">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Projected Savings Over Time</h2>
-                <canvas id="savingsChart"></canvas>
-            </div>
-
-            <div class="chart-section section-card">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Annual Income Sources Breakdown</h2>
-                <canvas id="incomeSourcesChart"></canvas>
-            </div>
-
-            <div class="table-section section-card">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Annual Breakdown</h2>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full bg-white">
-                        <thead>
-                            <tr>
-                                <th
-                                    class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">
-                                    Age</th>
-                                <th
-                                    class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">
-                                    Pension Pot</th>
-                                <th
-                                    class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">
-                                    ISA Savings</th>
-                                <th
-                                    class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">
-                                    Pension Drawdown (Taxable)</th>
-                                <th
-                                    class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">
-                                    Pension Drawdown (Tax-Free)</th>
-                                <th
-                                    class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">
-                                    ISA Drawdown</th>
-                                <th
-                                    class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">
-                                    State Pension</th>
-                                <th
-                                    class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">
-                                    Total Income</th>
-                            </tr>
-                        </thead>
-                        <tbody id="annualBreakdownBody">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+    <!-- Personal Details -->
+    <div class="section-card">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">Personal Details</h2>
+      <div class="mb-4">
+        <label for="currentAge" class="block text-gray-700 text-sm font-bold mb-2">Current Age:</label>
+        <input type="number" id="currentAge" name="currentAge"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="21">
+      </div>
+      <div class="mb-4">
+        <label for="retirementAge" class="block text-gray-700 text-sm font-bold mb-2">Desired Retirement Age:</label>
+        <input type="number" id="retirementAge" name="retirementAge"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="57">
+      </div>
+      <div class="mb-4">
+        <label for="desiredPostTaxIncome" class="block text-gray-700 text-sm font-bold mb-2">Desired Annual Post-Tax Income in Retirement (£):</label>
+        <input type="number" id="desiredPostTaxIncome" name="desiredPostTaxIncome"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="32000">
+      </div>
+      <div class="mb-4">
+        <label for="postRetirementIncome" class="block text-gray-700 text-sm font-bold mb-2">Other Annual Income in Retirement (e.g., State Pension - £):</label>
+        <input type="number" id="postRetirementIncome" name="postRetirementIncome"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="11973">
+      </div>
     </div>
 
-    <script>
-        let savingsChart;
-        let incomeSourcesChart;
-        function calculatePension(inputs) {
-            let {
-                currentAge,
-                retirementAge,
-                currentPensionSavings,
-                annualPensionContributions,
-                currentIsaSavings,
-                annualIsaContributions,
-                desiredPostTaxIncome,
-                postRetirementIncome,
-                returnRate,
-                inflationRate,
-                takeLumpSum
-            } = inputs;
+    <!-- Savings & Contributions -->
+    <div class="section-card">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">Current Savings &amp; Contributions</h2>
+      <div class="mb-4">
+        <label for="currentPensionSavings" class="block text-gray-700 text-sm font-bold mb-2">Current Pension Savings (£):</label>
+        <input type="number" id="currentPensionSavings" name="currentPensionSavings"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="0">
+      </div>
+      <div class="mb-4">
+        <label for="annualPensionContributions" class="block text-gray-700 text-sm font-bold mb-2">Annual Pension Contributions (£):</label>
+        <input type="number" id="annualPensionContributions" name="annualPensionContributions"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="0">
+      </div>
+      <div class="mb-4">
+        <label for="currentIsaSavings" class="block text-gray-700 text-sm font-bold mb-2">Current ISA Savings (£):</label>
+        <input type="number" id="currentIsaSavings" name="currentIsaSavings"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="0">
+      </div>
+      <div class="mb-4">
+        <label for="annualIsaContributions" class="block text-gray-700 text-sm font-bold mb-2">Annual ISA Contributions (£):</label>
+        <input type="number" id="annualIsaContributions" name="annualIsaContributions"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="0">
+      </div>
+    </div>
 
-            returnRate /= 100;
-            inflationRate /= 100;
+    <!-- Assumptions -->
+    <div class="section-card md:col-span-2">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">Assumptions</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="returnRate" class="block text-gray-700 text-sm font-bold mb-2">Annual Return Rate (%):</label>
+          <input type="number" id="returnRate" name="returnRate"
+            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" step="0.1" value="6">
+        </div>
+        <div>
+          <label for="inflationRate" class="block text-gray-700 text-sm font-bold mb-2">Annual Inflation Rate (%):</label>
+          <input type="number" id="inflationRate" name="inflationRate"
+            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" step="0.1" value="2.5">
+        </div>
+      </div>
+      <div class="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+        <h3 class="text-sm font-bold text-gray-700 mb-3">Tax-Free Cash</h3>
+        <div>
+          <label for="lumpSumAmount" class="block text-gray-700 text-sm font-bold mb-2">
+            Lump Sum at Retirement (£, today's money):
+          </label>
+          <input type="number" id="lumpSumAmount" name="lumpSumAmount"
+            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            value="0" min="0">
+          <p class="text-xs text-gray-500 mt-1">Taken in full in your first year of drawdown and capped at 25% of your pot at that point. Any remaining tax-free allowance is then drawn as 25% of each annual withdrawal until exhausted. Set to 0 for pure UFPLS (25% of every withdrawal is tax-free throughout).</p>
+        </div>
+        <div id="lumpSumClampWarning" class="hidden mt-3 p-2 bg-amber-50 border border-amber-300 rounded text-amber-700 text-xs"></div>
+      </div>
+    </div>
 
-            let pensionPot = currentPensionSavings;
-            let isaSavings = currentIsaSavings;
-            let taxFreeLumpSumTaken = 0;
+    <!-- Retirement Strategy -->
+    <div class="section-card md:col-span-2">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">Retirement Strategy</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
 
-            const TAX_RATE = 0.20;
-            const MIN_PENSION_DRAW_AGE = 57;
+        <div>
+          <input type="radio" id="strat1" name="strategy" value="minimise_tax" class="strategy-radio" checked>
+          <label for="strat1" class="strategy-label">
+            <div class="strategy-name">Minimise Income Tax</div>
+            <div class="strategy-desc">Draw pension up to the personal allowance only — no income tax paid. ISA covers the rest.</div>
+          </label>
+        </div>
 
-            const annualBreakdown = [];
+        <div>
+          <input type="radio" id="strat2" name="strategy" value="basic_rate" class="strategy-radio">
+          <label for="strat2" class="strategy-label">
+            <div class="strategy-name">Pay Basic Rate Only</div>
+            <div class="strategy-desc">Draw a set taxable income from your pension each year, staying within the basic rate band. ISA covers the rest.</div>
+          </label>
+        </div>
 
-            for (let year = currentAge; year <= 100; year++) {
-                const yearsSinceStart = year - currentAge;
-                const inflationFactor = Math.pow(1 + inflationRate, yearsSinceStart);
+        <div>
+          <input type="radio" id="strat3" name="strategy" value="aggressive" class="strategy-radio">
+          <label for="strat3" class="strategy-label">
+            <div class="strategy-name">Deplete Pension First</div>
+            <div class="strategy-desc">Maximise pension drawdown up to a gross annual limit. ISA used only once pension is exhausted.</div>
+          </label>
+        </div>
 
-                // Inflate fixed values
-                const inflatedPersonalAllowance = 12570 * inflationFactor;
-                const inflatedBasicRateThreshold = 50270 * inflationFactor;
-                const inflatedHigherRateThreshold = 125140 * inflationFactor;
-                const inflatedAnnualTaxFreePensionIncome = 12570 * inflationFactor;
+        <div>
+          <input type="radio" id="strat4" name="strategy" value="isa_first" class="strategy-radio">
+          <label for="strat4" class="strategy-label">
+            <div class="strategy-name">ISA First</div>
+            <div class="strategy-desc">Draw from ISA before touching pension. Pension access begins at 57 — ISA must bridge any earlier gap.</div>
+          </label>
+        </div>
 
-                let annualPensionDrawdownTaxable = 0;
-                let annualPensionDrawdownTaxFree = 0;
-                let annualIsaDrawdown = 0;
-                let totalIncome = 0;
-                let statePension = 0;
+      </div>
 
-                let pensionTaxFreeAllowanceUsedThisYear = 0;
-                let lumpSumTaken = 0; // Track for this year
+      <!-- Strategy 2: Tax jurisdiction + taxable income target -->
+      <div id="strategy2Config" class="hidden mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+        <h3 class="text-sm font-bold text-gray-700 mb-3">Tax Jurisdiction &amp; Taxable Income Target</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+          <div>
+            <label for="taxJurisdiction" class="block text-gray-700 text-sm font-bold mb-2">Region:</label>
+            <select id="taxJurisdiction" name="taxJurisdiction"
+              class="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+              <option value="england">England / Wales / NI</option>
+              <option value="scotland">Scotland</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div>
+            <label for="taxableIncomeTarget" class="block text-gray-700 text-sm font-bold mb-2">
+              Target Taxable Income (£/yr, today's money):
+            </label>
+            <input type="number" id="taxableIncomeTarget" name="taxableIncomeTarget"
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              value="37700">
+            <p class="text-xs text-gray-500 mt-1" id="taxableTargetHint"></p>
+          </div>
+        </div>
+        <div id="customBands" class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4" style="display:none">
+          <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">Personal Allowance (£):</label>
+            <input type="number" id="customPersonalAllowance" name="customPersonalAllowance"
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="12570">
+          </div>
+          <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">Basic Rate Upper Threshold (£):</label>
+            <input type="number" id="customBasicRateThreshold" name="customBasicRateThreshold"
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="50270">
+          </div>
+          <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">Basic Rate (%):</label>
+            <input type="number" id="customBasicRate" name="customBasicRate"
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="20">
+          </div>
+        </div>
+        <div id="jurisdictionInfo" class="mt-2 text-xs text-gray-500"></div>
+      </div>
 
-                // Portfolio growth always applies
-                pensionPot = pensionPot * (1 + returnRate);
-                isaSavings = isaSavings * (1 + returnRate);
+      <!-- Strategy 3: Deplete pension first — gross draw limit -->
+      <div id="strategy3Config" class="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+        <h3 class="text-sm font-bold text-gray-700 mb-3">Pension Drawdown Limit</h3>
+        <div class="mb-2">
+          <label for="aggressiveDrawAmount" class="block text-gray-700 text-sm font-bold mb-2">
+            Maximum Annual Gross Pension Withdrawal (£, today's money):
+          </label>
+          <input type="number" id="aggressiveDrawAmount" name="aggressiveDrawAmount"
+            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" value="40000">
+          <p class="text-xs text-gray-500 mt-1">Draw is capped at your income need — this is a ceiling, not a fixed target. Adjusted for inflation each year. ISA is used once the pension is exhausted.</p>
+        </div>
+      </div>
 
-                // Add contributions before retirement
-                if (year < retirementAge) {
-                    if (year > currentAge) {
-                        pensionPot += annualPensionContributions * inflationFactor;
-                        isaSavings += annualIsaContributions * inflationFactor;
-                    }
-                }
+    </div>
 
-                // Drawdown logic starts at retirementAge
-                if (year >= retirementAge) {
-                    let incomeNeeded = desiredPostTaxIncome * inflationFactor;
+    <!-- Advanced Configuration (collapsible) -->
+    <div class="section-card md:col-span-2" style="margin-bottom:0">
+      <button type="button" id="advancedConfigToggle"
+        class="w-full flex items-center justify-between text-left group">
+        <span class="text-xl font-semibold text-gray-700 group-hover:text-orange-600 transition-colors">
+          ⚙️ Advanced Configuration
+        </span>
+        <span id="advancedConfigChevron" class="text-gray-400 group-hover:text-orange-500 transition-colors text-lg">▼</span>
+      </button>
+      <p class="text-xs text-gray-500 mt-1">Pension access age, state pension age. Tax band configuration coming soon.</p>
 
-                    // Take lump sum only at the later of retirementAge or MIN_PENSION_DRAW_AGE
-                    if (year === Math.max(retirementAge, MIN_PENSION_DRAW_AGE) && takeLumpSum && taxFreeLumpSumTaken === 0) {
-                        taxFreeLumpSumTaken = pensionPot * 0.25;
-                        pensionPot -= taxFreeLumpSumTaken;
-                        lumpSumTaken = taxFreeLumpSumTaken; // Only this year
-                    }
+      <div id="advancedConfigBody" class="hidden mt-4 pt-4 border-t border-gray-100">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                    if (year >= 67) {
-                        statePension = postRetirementIncome * inflationFactor;
-                    }
+          <div>
+            <h3 class="text-sm font-bold text-gray-700 mb-3">Pension Ages</h3>
+            <div class="mb-4">
+              <label for="minPensionAccessAge" class="block text-gray-700 text-sm font-bold mb-2">
+                Minimum Pension Access Age:
+              </label>
+              <input type="number" id="minPensionAccessAge" name="minPensionAccessAge"
+                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                value="57" min="50" max="75">
+              <p class="text-xs text-gray-500 mt-1">Currently 57 (was 55 before April 2028). Set to 55 if you were born before 6 April 1971 and had a protected pension age.</p>
+            </div>
+            <div class="mb-4">
+              <label for="statePensionAge" class="block text-gray-700 text-sm font-bold mb-2">
+                State Pension Age:
+              </label>
+              <input type="number" id="statePensionAge" name="statePensionAge"
+                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                value="67" min="60" max="80">
+              <p class="text-xs text-gray-500 mt-1">Currently 66 (rising to 67 by 2028, 68 by 2046). Check your forecast at gov.uk/check-state-pension.</p>
+            </div>
+          </div>
 
-                    let remainingIncomeNeeded = incomeNeeded - statePension;
-                    remainingIncomeNeeded = Math.max(0, remainingIncomeNeeded);
+          <div class="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
+            <p class="font-semibold text-gray-700 mb-2">ℹ️ How these interact</p>
+            <ul class="space-y-2 text-xs">
+              <li><span class="font-medium">Pension access age</span> — the earliest you can draw from your pension pot. The 25% lump sum is also gated on this age.</li>
+              <li><span class="font-medium">State pension age</span> — when the "Other Annual Income in Retirement" figure starts being paid. This is treated as separate from your personal savings.</li>
+              <li>If your desired retirement age is earlier than the pension access age, the ISA bridges the gap. Any shortfall is flagged.</li>
+            </ul>
+          </div>
 
-                    if (year < MIN_PENSION_DRAW_AGE) {
-                        // Only ISA drawdown allowed, pension untouched
-                        if (remainingIncomeNeeded > 0 && isaSavings > 0) {
-                            annualIsaDrawdown = Math.min(isaSavings, remainingIncomeNeeded);
-                            isaSavings -= annualIsaDrawdown;
-                            remainingIncomeNeeded -= annualIsaDrawdown;
-                        }
-                        annualPensionDrawdownTaxFree = 0;
-                        annualPensionDrawdownTaxable = 0;
-                    } else {
-                        let maxTotalDraw;
-                        let taxFreeRatio;
-                        if (!takeLumpSum) {
-                            // Spread 25% tax-free over years: 133.3333% of annual allowance
-                            maxTotalDraw = inflatedAnnualTaxFreePensionIncome * (4 / 3); // 133.3333%
-                            taxFreeRatio = 0.25; // 25% tax-free, 75% taxable
-                        } else {
-                            // Lump sum taken, all regular drawdown is taxable
-                            maxTotalDraw = inflatedAnnualTaxFreePensionIncome;
-                            taxFreeRatio = 0.0; // 0% tax-free, 100% taxable
-                        }
+        </div>
+      </div>
+    </div>
 
-                        if (pensionPot > 0) {
-                            const drawAmount = Math.min(remainingIncomeNeeded, maxTotalDraw, pensionPot);
+    <div class="md:col-span-2 flex justify-center">
+      <button type="submit"
+        class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-lg focus:outline-none focus:shadow-outline text-lg">
+        Calculate Retirement
+      </button>
+    </div>
+  </form>
 
-                            // Split drawAmount into tax-free and taxable portions
-                            if (!takeLumpSum) {
-                                annualPensionDrawdownTaxFree = drawAmount * taxFreeRatio;
-                                annualPensionDrawdownTaxable = drawAmount * (1 - taxFreeRatio);
-                            } else {
-                                // Lump sum taken, all regular drawdown is taxable
-                                annualPensionDrawdownTaxFree = 0;
-                                annualPensionDrawdownTaxable = drawAmount;
-                            }
+  <!-- Results -->
+  <div id="results" class="mt-8 hidden">
 
-                            pensionPot -= drawAmount;
-                            remainingIncomeNeeded -= drawAmount;
-                        }
+    <div class="summary-section section-card">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">Summary
+        <span id="strategyBadge" class="ml-2 text-sm font-normal text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full"></span>
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <p class="text-gray-700 mb-2">Projected Pension Pot at Retirement: <span id="projectedPensionPot" class="font-semibold"></span></p>
+        <p class="text-gray-700 mb-2">Projected ISA Savings at Retirement: <span id="projectedIsaSavings" class="font-semibold"></span></p>
+        <p class="text-gray-700 mb-2">Financial independence at retirement: <span id="yearsToIndependence" class="font-semibold"></span></p>
+        <p class="text-gray-700 mb-2">Years till funds run out: <span id="yearsFundsRunOut" class="font-semibold"></span></p>
+      </div>
+      <div id="incomeGapWarning" class="hidden mt-3 p-3 bg-red-50 border border-red-300 rounded text-red-700 text-sm font-medium"></div>
+    </div>
 
-                        if (remainingIncomeNeeded > 0 && isaSavings > 0) {
-                            // Withdraw as much as possible from ISA
-                            annualIsaDrawdown = Math.min(isaSavings, remainingIncomeNeeded);
-                            isaSavings -= annualIsaDrawdown;
-                            remainingIncomeNeeded -= annualIsaDrawdown;
-                        }
+    <div class="chart-section section-card">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">Projected Savings Over Time</h2>
+      <canvas id="savingsChart"></canvas>
+    </div>
 
-                        // If there's still income needed after ISA is depleted, withdraw from pension
-                        if (remainingIncomeNeeded > 0 && pensionPot > 0) {
-                            // For lump sum taken, all is taxable; otherwise, split as before
-                            let drawAmount = Math.min(remainingIncomeNeeded, pensionPot);
-                            if (!takeLumpSum) {
-                                // Split drawAmount into tax-free and taxable portions
-                                annualPensionDrawdownTaxFree += drawAmount * 0.25;
-                                annualPensionDrawdownTaxable += drawAmount * 0.75;
-                            } else {
-                                annualPensionDrawdownTaxable += drawAmount;
-                            }
-                            pensionPot -= drawAmount;
-                            remainingIncomeNeeded -= drawAmount;
-                        }
-                    }
+    <div class="chart-section section-card">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">Annual Income Sources Breakdown</h2>
+      <canvas id="incomeSourcesChart"></canvas>
+    </div>
 
-                    totalIncome = annualPensionDrawdownTaxFree + annualIsaDrawdown + annualPensionDrawdownTaxable + statePension;
+    <div class="table-section section-card">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">Annual Breakdown</h2>
+      <div class="overflow-x-auto">
+        <table class="min-w-full bg-white">
+          <thead>
+            <tr>
+              <th class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">Age</th>
+              <th class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">Pension Pot</th>
+              <th class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">ISA Savings</th>
+              <th class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">Pension Drawdown (Taxable)</th>
+              <th class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">Pension Drawdown (Tax-Free)</th>
+              <th class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">ISA Drawdown</th>
+              <th class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">State Pension</th>
+              <th class="px-4 py-2 border-b-2 border-gray-200 text-left text-sm leading-4 text-gray-600 uppercase tracking-wider">Total Income</th>
+            </tr>
+          </thead>
+          <tbody id="annualBreakdownBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 
-                    if (pensionPot <= 0 && isaSavings <= 0 && totalIncome < incomeNeeded && year > retirementAge) {
-                        annualBreakdown.push({
-                            age: year,
-                            pensionPot: pensionPot,
-                            isaSavings: isaSavings,
-                            pensionDrawdownTaxable: annualPensionDrawdownTaxable,
-                            pensionDrawdownTaxFree: annualPensionDrawdownTaxFree,
-                            isaDrawdown: annualIsaDrawdown,
-                            statePension: statePension,
-                            totalIncome: totalIncome,
-                            fundsRunOut: true
-                        });
-                        break;
-                    }
-                }
+<script>
+// ─── Tax band presets ───────────────────────────────────────────────────────
+const TAX_BANDS = {
+  england: {
+    personalAllowance: 12570,
+    basicRateThreshold: 50270,
+    basicRate: 0.20,
+    label: 'England / Wales / NI'
+  },
+  scotland: {
+    personalAllowance: 12570,
+    basicRateThreshold: 43662,  // Scottish basic rate upper threshold 2024/25: £12,570 + £31,092 band = £43,662
+    basicRate: 0.20,
+    label: 'Scotland'
+  }
+};
 
-                annualBreakdown.push({
-                    age: year,
-                    pensionPot: pensionPot,
-                    isaSavings: isaSavings,
-                    pensionDrawdownTaxable: annualPensionDrawdownTaxable,
-                    pensionDrawdownTaxFree: annualPensionDrawdownTaxFree,
-                    isaDrawdown: annualIsaDrawdown,
-                    statePension: statePension,
-                    lumpSumTaken: lumpSumTaken,
-                    totalIncome: totalIncome
-                });
-            }
+// ─── Strategy helpers ───────────────────────────────────────────────────────
 
-            return annualBreakdown;
+/**
+ * Split a gross pension draw into tax-free and taxable portions.
+ *
+ * remainingTaxFreePool:
+ *   -1  = pure UFPLS mode: 25% of every draw is tax-free indefinitely
+ *   > 0 = fixed pool mode: draw 25% from pool until exhausted, then all taxable
+ *   0   = pool exhausted: all taxable
+ *
+ * Returns { taxFree, taxable, poolUsed }
+ */
+function splitPensionDraw(amount, remainingTaxFreePool) {
+  if (remainingTaxFreePool === -1) {
+    // Pure UFPLS — 25% always tax-free, no pool to deplete
+    return { taxFree: amount * 0.25, taxable: amount * 0.75, poolUsed: 0 };
+  }
+  if (remainingTaxFreePool <= 0) {
+    // Pool exhausted — all taxable
+    return { taxFree: 0, taxable: amount, poolUsed: 0 };
+  }
+  // Fixed pool — draw 25% of each withdrawal from it until gone
+  const taxFreeDesired = amount * 0.25;
+  const taxFree = Math.min(taxFreeDesired, remainingTaxFreePool);
+  return { taxFree, taxable: amount - taxFree, poolUsed: taxFree };
+}
+
+/**
+ * Helper: subtract poolUsed from remainingTaxFreePool, preserving the -1 UFPLS sentinel.
+ */
+function reducePool(remainingTaxFreePool, poolUsed) {
+  if (remainingTaxFreePool === -1) return -1;
+  return Math.max(0, remainingTaxFreePool - poolUsed);
+}
+
+/**
+ * STRATEGY 1 – Minimise Income Tax
+ * Draw from pension up to the personal allowance only (no income tax).
+ * ISA covers any remainder. Pension falls back if ISA is exhausted.
+ */
+function strategyMinimiseTax(state, params) {
+  const { pensionPot, isaSavings, incomeNeeded, inflationFactor, canDrawPension, remainingTaxFreePool } = state;
+  let rem = incomeNeeded;
+  let taxFree = 0, taxable = 0, isa = 0, poolUsed = 0;
+
+  if (canDrawPension && pensionPot > 0) {
+    const draw = Math.min(params.personalAllowance * inflationFactor, rem, pensionPot);
+    const s = splitPensionDraw(draw, remainingTaxFreePool);
+    taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= draw;
+  }
+
+  if (rem > 0 && isaSavings > 0) {
+    isa = Math.min(isaSavings, rem); rem -= isa;
+  }
+
+  // ISA exhausted — fall back to more pension
+  if (rem > 0 && canDrawPension) {
+    const used = taxFree + taxable;
+    const extra = Math.min(rem, pensionPot - used);
+    if (extra > 0) {
+      const s = splitPensionDraw(extra, reducePool(remainingTaxFreePool, poolUsed));
+      taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= extra;
+    }
+  }
+
+  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, poolUsed, incomeGap: Math.max(0, rem) };
+}
+
+/**
+ * STRATEGY 2 – Pay Basic Rate Only
+ * Draw pension up to (personal allowance + taxable income target), respecting 25/75 split.
+ * The gross pension draw = personalAllowance + taxableTarget (in today's money, inflated).
+ * ISA covers remainder. No higher-rate tax should be incurred.
+ */
+function strategyBasicRate(state, params) {
+  const { pensionPot, isaSavings, incomeNeeded, inflationFactor, canDrawPension, remainingTaxFreePool } = state;
+  let rem = incomeNeeded;
+  let taxFree = 0, taxable = 0, isa = 0, poolUsed = 0;
+
+  if (canDrawPension && pensionPot > 0) {
+    const grossCap = (params.personalAllowance + params.taxableIncomeTarget) * inflationFactor;
+    const draw = Math.min(grossCap, rem, pensionPot);
+    const s = splitPensionDraw(draw, remainingTaxFreePool);
+    taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= draw;
+  }
+
+  if (rem > 0 && isaSavings > 0) {
+    isa = Math.min(isaSavings, rem); rem -= isa;
+  }
+
+  if (rem > 0 && canDrawPension) {
+    const used = taxFree + taxable;
+    const extra = Math.min(rem, pensionPot - used);
+    if (extra > 0) {
+      const s = splitPensionDraw(extra, reducePool(remainingTaxFreePool, poolUsed));
+      taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= extra;
+    }
+  }
+
+  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, poolUsed, incomeGap: Math.max(0, rem) };
+}
+
+/**
+ * STRATEGY 3 – Deplete Pension First
+ * Draw up to a gross annual limit from the pension (inflation-adjusted), but never
+ * more than the income need. ISA used only once pension is exhausted.
+ */
+function strategyDepletePension(state, params) {
+  const { pensionPot, isaSavings, incomeNeeded, inflationFactor, canDrawPension, remainingTaxFreePool } = state;
+  let rem = incomeNeeded;
+  let taxFree = 0, taxable = 0, isa = 0, poolUsed = 0;
+
+  if (canDrawPension && pensionPot > 0) {
+    const draw = Math.min(params.aggressiveDrawAmount * inflationFactor, rem, pensionPot);
+    const s = splitPensionDraw(draw, remainingTaxFreePool);
+    taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= draw;
+  }
+
+  if (rem > 0 && isaSavings > 0) {
+    isa = Math.min(isaSavings, rem); rem -= isa;
+  }
+
+  if (rem > 0 && canDrawPension) {
+    const used = taxFree + taxable;
+    const extra = Math.min(rem, pensionPot - used);
+    if (extra > 0) {
+      const s = splitPensionDraw(extra, reducePool(remainingTaxFreePool, poolUsed));
+      taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= extra;
+    }
+  }
+
+  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, poolUsed, incomeGap: Math.max(0, rem) };
+}
+
+/**
+ * STRATEGY 4 – ISA First
+ * Draw from ISA before touching pension. Pension not accessible until age 57.
+ * If ISA runs out before 57, the shortfall is an income gap.
+ */
+function strategyIsaFirst(state, params) {
+  const { pensionPot, isaSavings, incomeNeeded, canDrawPension, remainingTaxFreePool } = state;
+  let rem = incomeNeeded;
+  let taxFree = 0, taxable = 0, isa = 0, poolUsed = 0;
+
+  if (isaSavings > 0) {
+    isa = Math.min(isaSavings, rem); rem -= isa;
+  }
+
+  if (rem > 0 && canDrawPension && pensionPot > 0) {
+    const draw = Math.min(rem, pensionPot);
+    const s = splitPensionDraw(draw, remainingTaxFreePool);
+    taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= draw;
+  }
+
+  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, poolUsed, incomeGap: Math.max(0, rem) };
+}
+
+// ─── Main simulation ────────────────────────────────────────────────────────
+
+function calculatePension(inputs) {
+  let {
+    currentAge, retirementAge,
+    currentPensionSavings, annualPensionContributions,
+    currentIsaSavings, annualIsaContributions,
+    desiredPostTaxIncome, postRetirementIncome,
+    returnRate, inflationRate,
+    lumpSumAmount, strategy,
+    taxBands, aggressiveDrawAmount, taxableIncomeTarget,
+    minPensionAccessAge, statePensionAge
+  } = inputs;
+
+  returnRate /= 100;
+  inflationRate /= 100;
+
+  const MIN_PENSION_DRAW_AGE = minPensionAccessAge;
+  const STATE_PENSION_AGE = statePensionAge;
+
+  let pensionPot = currentPensionSavings;
+  let isaSavings = currentIsaSavings;
+  // Tax-free pool: set at drawdown age once we know the pot size
+  // lumpSumAmount is in today's money; we inflate it at the drawdown year
+  let taxFreePool = null;         // null = not yet initialised
+  let lumpSumActual = 0;          // the real £ taken as upfront lump sum
+  let lumpSumClamped = false;     // did we have to clamp it?
+  const annualBreakdown = [];
+
+  for (let year = currentAge; year <= 100; year++) {
+    const yearsSinceStart = year - currentAge;
+    const inflationFactor = Math.pow(1 + inflationRate, yearsSinceStart);
+
+    let annualPensionDrawdownTaxable = 0;
+    let annualPensionDrawdownTaxFree = 0;
+    let annualIsaDrawdown = 0;
+    let statePension = 0;
+    let lumpSumTaken = 0;
+    let incomeGap = 0;
+
+    // Portfolio growth
+    pensionPot *= (1 + returnRate);
+    isaSavings *= (1 + returnRate);
+
+    // Contributions before retirement
+    if (year < retirementAge && year > currentAge) {
+      pensionPot += annualPensionContributions * inflationFactor;
+      isaSavings += annualIsaContributions * inflationFactor;
+    }
+
+    if (year >= retirementAge) {
+      const incomeNeeded = desiredPostTaxIncome * inflationFactor;
+      const lumpSumYear = Math.max(retirementAge, MIN_PENSION_DRAW_AGE);
+
+      // Initialise tax-free pool and take upfront lump sum on the first drawdown year
+      if (year === lumpSumYear && taxFreePool === null) {
+        const maxLumpSum = pensionPot * 0.25;
+        const desiredLumpSum = lumpSumAmount * inflationFactor;
+        lumpSumActual = Math.min(desiredLumpSum, maxLumpSum);
+        lumpSumClamped = desiredLumpSum > maxLumpSum + 1; // £1 tolerance
+        pensionPot -= lumpSumActual;
+        // If no lump sum taken, use pure UFPLS (-1 sentinel = 25% of every draw, indefinitely)
+        // Otherwise track the remaining fixed pool
+        taxFreePool = lumpSumActual > 0 ? (maxLumpSum - lumpSumActual) : -1;
+      }
+
+      // Ensure pool is initialised (e.g. if retirementAge < MIN_PENSION_DRAW_AGE, first year may differ)
+      const remainingTaxFreePool = taxFreePool !== null ? taxFreePool : 0;
+
+      // Record the lump sum for the table/chart (only non-zero in the year it's taken)
+      lumpSumTaken = (year === lumpSumYear) ? lumpSumActual : 0;
+
+      // State pension
+      if (year >= STATE_PENSION_AGE) {
+        statePension = postRetirementIncome * inflationFactor;
+      }
+
+      const remainingAfterStatePension = Math.max(0, incomeNeeded - statePension);
+      const canDrawPension = year >= MIN_PENSION_DRAW_AGE;
+
+      // In the lump sum year, pension drawdown proceeds normally but the tax-free
+      // pool is treated as 0 — the lump sum has already used the tax-free allowance
+      // for that year. The pool is available from the following year onward.
+      const isLumpSumYear = lumpSumActual > 0 && year === lumpSumYear;
+
+      // Dispatch to strategy
+      const strategyState = {
+        pensionPot,
+        isaSavings,
+        incomeNeeded: remainingAfterStatePension,
+        inflationFactor,
+        canDrawPension,
+        remainingTaxFreePool: isLumpSumYear ? 0 : remainingTaxFreePool
+      };
+
+      const strategyParams = {
+        personalAllowance: taxBands.personalAllowance,
+        basicRateThreshold: taxBands.basicRateThreshold,
+        taxableIncomeTarget,
+        aggressiveDrawAmount
+      };
+
+      let result;
+      switch (strategy) {
+        case 'basic_rate':   result = strategyBasicRate(strategyState, strategyParams); break;
+        case 'aggressive':   result = strategyDepletePension(strategyState, strategyParams); break;
+        case 'isa_first':    result = strategyIsaFirst(strategyState, strategyParams); break;
+        default:             result = strategyMinimiseTax(strategyState, strategyParams); break;
+      }
+
+      annualPensionDrawdownTaxFree = result.pensionDrawTaxFree;
+      annualPensionDrawdownTaxable = result.pensionDrawTaxable;
+      annualIsaDrawdown = result.isaDrawdown;
+      incomeGap = result.incomeGap;
+
+      // Decrement the fixed pool. Skip if null (not yet initialised) or -1 (pure UFPLS — never depletes)
+      if (taxFreePool !== null && taxFreePool !== -1) {
+        taxFreePool = Math.max(0, taxFreePool - (result.poolUsed || 0));
+      }
+
+      pensionPot -= (annualPensionDrawdownTaxFree + annualPensionDrawdownTaxable);
+      isaSavings -= annualIsaDrawdown;
+      pensionPot = Math.max(0, pensionPot);
+      isaSavings = Math.max(0, isaSavings);
+
+      const totalIncome = annualPensionDrawdownTaxFree + annualPensionDrawdownTaxable + annualIsaDrawdown + statePension;
+
+      // Distinguish why there's an income gap:
+      // 'access_gap' = pension exists but isn't accessible yet (pre-57, ISA depleted)
+      // 'funds_exhausted' = both pots are genuinely empty
+      let incomeGapReason = null;
+      if (incomeGap > 1) {
+        if (!canDrawPension && pensionPot > 1) {
+          incomeGapReason = 'access_gap';
+        } else {
+          // Covers: both pots empty, pension nearly empty, or canDrawPension but nothing left
+          incomeGapReason = 'funds_exhausted';
         }
+      }
 
-        function updateResults(results, inputs) {
-            document.getElementById('results').classList.remove('hidden');
+      const rowData = {
+        age: year,
+        pensionPot,
+        isaSavings,
+        pensionDrawdownTaxable: annualPensionDrawdownTaxable,
+        pensionDrawdownTaxFree: annualPensionDrawdownTaxFree,
+        isaDrawdown: annualIsaDrawdown,
+        statePension,
+        lumpSumTaken,
+        totalIncome,
+        incomeGap,
+        incomeGapReason,
+        incomeNeeded
+      };
 
-            const lastYear = results[results.length - 1];
-            const projectedPensionPotElem = document.getElementById('projectedPensionPot');
-            const projectedIsaSavingsElem = document.getElementById('projectedIsaSavings');
-            const yearsToIndependenceElem = document.getElementById('yearsToIndependence');
-            const yearsFundsRunOutElem = document.getElementById('yearsFundsRunOut');
-            const annualBreakdownBody = document.getElementById('annualBreakdownBody');
+      if (pensionPot <= 0 && isaSavings <= 0 && incomeGap > 0 && year > retirementAge) {
+        annualBreakdown.push({ ...rowData, fundsRunOut: true });
+        break;
+      }
 
-            projectedPensionPotElem.textContent = `£${Math.max(0, lastYear.pensionPot).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            projectedIsaSavingsElem.textContent = `£${Math.max(0, lastYear.isaSavings).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      annualBreakdown.push(rowData);
+    } else {
+      // Accumulation phase — still record the row
+      annualBreakdown.push({
+        age: year, pensionPot, isaSavings,
+        pensionDrawdownTaxable: 0, pensionDrawdownTaxFree: 0,
+        isaDrawdown: 0, statePension: 0, lumpSumTaken: 0,
+        totalIncome: 0, incomeGap: 0, incomeNeeded: 0
+      });
+    }
+  }
 
-            // Determine years to financial independence / funds running out
-            let retirementYearData = results.find(yearData => yearData.age === inputs.retirementAge);
-            if (retirementYearData) {
-                if (retirementYearData.pensionPot > 0 || retirementYearData.isaSavings > 0) {
-                    yearsToIndependenceElem.textContent = 'Achieved at retirement age.';
-                } else {
-                    yearsToIndependenceElem.textContent = 'Not achieved by retirement age with current assumptions.';
-                }
-            } else {
-                yearsToIndependenceElem.textContent = 'N/A';
-            }
+  return { rows: annualBreakdown, lumpSumClamped, lumpSumActual };
+}
 
+// ─── UI update ──────────────────────────────────────────────────────────────
 
-            let fundsRunOutYear = results.find(yearData => yearData.fundsRunOut);
-            if (fundsRunOutYear) {
-                yearsFundsRunOutElem.textContent = `${fundsRunOutYear.age} (Funds depleted)`;
-            } else if (lastYear.age === 100) {
-                yearsFundsRunOutElem.textContent = 'Projected to last beyond 100 (or simulation end)';
-            } else {
-                yearsFundsRunOutElem.textContent = 'N/A';
-            }
+let savingsChart, incomeSourcesChart;
 
-            // Update savings chart
-            const labels = results.map(year => year.age);
-            const pensionData = results.map(year => year.pensionPot);
-            const isaData = results.map(year => year.isaSavings);
+const STRATEGY_NAMES = {
+  minimise_tax: 'Minimise Income Tax',
+  basic_rate: 'Pay Basic Rate Only',
+  aggressive: 'Deplete Pension First',
+  isa_first: 'ISA First'
+};
 
-            if (savingsChart) {
-                savingsChart.destroy();
-            }
+function updateResults(results, inputs, lumpSumClamped, lumpSumActual) {
+  document.getElementById('results').classList.remove('hidden');
 
-            const ctxSavings = document.getElementById('savingsChart').getContext('2d');
-            savingsChart = new Chart(ctxSavings, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Pension Pot',
-                        data: pensionData,
-                        borderColor: 'rgb(255, 99, 132)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                        tension: 0.1,
-                        fill: false
-                    }, {
-                        label: 'ISA Savings',
-                        data: isaData,
-                        borderColor: 'rgb(54, 162, 235)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                        tension: 0.1,
-                        fill: false
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Age'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Amount (£)'
-                            },
-                            beginAtZero: true
-                        }
-                    }
-                }
-            });
+  // Lump sum clamp warning
+  const clampWarning = document.getElementById('lumpSumClampWarning');
+  if (lumpSumClamped) {
+    clampWarning.classList.remove('hidden');
+    clampWarning.textContent = `Your requested lump sum exceeded 25% of your pension pot at drawdown. It has been clamped to ${fmt(lumpSumActual)}.`;
+  } else {
+    clampWarning.classList.add('hidden');
+  }
 
-            // Update income sources chart
-            const pensionTaxFreeData = results.map(year => year.pensionDrawdownTaxFree || 0);
-            const isaDrawdownData = results.map(year => year.isaDrawdown || 0);
-            const pensionTaxableData = results.map(year => year.pensionDrawdownTaxable || 0);
-            const statePensionData = results.map(year => year.statePension || 0);
-            const lumpSumData = results.map(year => year.lumpSumTaken || 0); // Add this line
+  // Strategy badge
+  document.getElementById('strategyBadge').textContent = STRATEGY_NAMES[inputs.strategy] || '';
 
-            if (incomeSourcesChart) {
-                incomeSourcesChart.destroy();
-            }
+  const retirementData = results.find(r => r.age === inputs.retirementAge);
+  const projectedPensionPotElem = document.getElementById('projectedPensionPot');
+  const projectedIsaSavingsElem = document.getElementById('projectedIsaSavings');
+  const yearsToIndependenceElem = document.getElementById('yearsToIndependence');
+  const yearsFundsRunOutElem = document.getElementById('yearsFundsRunOut');
 
-            const ctxIncome = document.getElementById('incomeSourcesChart').getContext('2d');
-            incomeSourcesChart = new Chart(ctxIncome, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Pension (Tax-Free)',
-                            data: pensionTaxFreeData,
-                            backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                            stack: 'income'
-                        },
-                        {
-                            label: 'ISA Drawdown',
-                            data: isaDrawdownData,
-                            backgroundColor: 'rgba(255, 159, 64, 0.6)',
-                            stack: 'income'
-                        },
-                        {
-                            label: 'Pension (Taxable)',
-                            data: pensionTaxableData,
-                            backgroundColor: 'rgba(153, 102, 255, 0.6)',
-                            stack: 'income'
-                        },
-                        {
-                            label: 'State Pension',
-                            data: statePensionData,
-                            backgroundColor: 'rgba(255, 99, 132, 0.6)',
-                            stack: 'income'
-                        },
-                        {
-                            label: 'Tax-Free Lump Sum',
-                            data: lumpSumData,
-                            backgroundColor: 'rgba(255, 206, 86, 0.8)',
-                            type: 'bar',
-                            stack: 'income'
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            stacked: true,
-                            title: {
-                                display: true,
-                                text: 'Age'
-                            }
-                        },
-                        y: {
-                            stacked: true,
-                            title: {
-                                display: true,
-                                text: 'Annual Income (£)'
-                            },
-                            beginAtZero: true
-                        }
-                    }
-                }
-            });
+  if (retirementData) {
+    projectedPensionPotElem.textContent = fmt(retirementData.pensionPot);
+    projectedIsaSavingsElem.textContent = fmt(retirementData.isaSavings);
+    const hasFunds = retirementData.pensionPot > 0 || retirementData.isaSavings > 0;
+    yearsToIndependenceElem.textContent = hasFunds ? 'Achieved at retirement age.' : 'Not achieved by retirement age.';
+  } else {
+    projectedPensionPotElem.textContent = 'N/A';
+    projectedIsaSavingsElem.textContent = 'N/A';
+    yearsToIndependenceElem.textContent = 'N/A';
+  }
 
-            // Update table
-            annualBreakdownBody.innerHTML = '';
-            results.forEach(year => {
-                const row = annualBreakdownBody.insertRow();
-                row.classList.add('hover:bg-gray-50');
+  const fundsRunOutYear = results.find(r => r.fundsRunOut);
+  const lastYear = results[results.length - 1];
+  if (fundsRunOutYear) {
+    yearsFundsRunOutElem.textContent = `Age ${fundsRunOutYear.age} (funds depleted)`;
+  } else if (lastYear.age === 100) {
+    yearsFundsRunOutElem.textContent = 'Projected to last beyond age 100';
+  } else {
+    yearsFundsRunOutElem.textContent = 'N/A';
+  }
 
-                row.insertCell().textContent = year.age;
-                row.insertCell().textContent = `£${Math.max(0, year.pensionPot).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                row.insertCell().textContent = `£${Math.max(0, year.isaSavings).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                row.insertCell().textContent = `£${Math.max(0, year.pensionDrawdownTaxable || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Income gap warnings — split by reason
+  const gapWarning = document.getElementById('incomeGapWarning');
+  const accessGapYears    = results.filter(r => r.incomeGapReason === 'access_gap');
+  const exhaustedGapYears = results.filter(r => r.incomeGapReason === 'funds_exhausted');
 
-                const taxFreeTotal = (year.pensionDrawdownTaxFree || 0) + (year.lumpSumTaken || 0);
-                row.insertCell().textContent = `£${Math.max(0, taxFreeTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                row.insertCell().textContent = `£${Math.max(0, year.isaDrawdown || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                row.insertCell().textContent = `£${Math.max(0, year.statePension || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                row.insertCell().textContent = `£${Math.max(0, year.totalIncome || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            });
-        }
+  const messages = [];
+  if (accessGapYears.length > 0) {
+    const ages = accessGapYears.map(r => r.age);
+    const ageStr = ages.length === 1 ? `age ${ages[0]}` : `ages ${ages[0]}\u2013${ages[ages.length - 1]}`;
+    const totalShortfall = accessGapYears.reduce((sum, r) => sum + r.incomeGap, 0);
+    messages.push(`Your ISA runs out before your pension becomes accessible at age ${inputs.minPensionAccessAge}. There is a shortfall at ${ageStr}. You would need approximately ${fmt(totalShortfall)} more in ISA savings (in today\u2019s money) to bridge this gap \u2014 consider increasing your annual ISA contributions.`);
+  }
+  if (exhaustedGapYears.length > 0) {
+    const firstAge = exhaustedGapYears[0].age;
+    messages.push(`\u26a0\ufe0f Funds exhausted at age ${firstAge}: both pension and ISA are depleted and cannot meet your desired income. Consider increasing contributions or adjusting your retirement age.`);
+  }
 
-        document.getElementById('calculatorForm').addEventListener('submit', function (e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const inputs = {
-                currentAge: Number(formData.get('currentAge')),
-                retirementAge: Number(formData.get('retirementAge')),
-                currentPensionSavings: Number(formData.get('currentPensionSavings')),
-                annualPensionContributions: Number(formData.get('annualPensionContributions')),
-                currentIsaSavings: Number(formData.get('currentIsaSavings')),
-                annualIsaContributions: Number(formData.get('annualIsaContributions')),
-                desiredPostTaxIncome: Number(formData.get('desiredPostTaxIncome')),
-                postRetirementIncome: Number(formData.get('postRetirementIncome')),
-                returnRate: Number(formData.get('returnRate')),
-                inflationRate: Number(formData.get('inflationRate')),
-                takeLumpSum: formData.get('takeLumpSum') === 'on'
-            };
+  if (messages.length > 0) {
+    gapWarning.classList.remove('hidden');
+    gapWarning.innerHTML = messages.join('<br><br>');
+  } else {
+    gapWarning.classList.add('hidden');
+  }
 
-            const results = calculatePension(inputs);
-            updateResults(results, inputs);
-        });
-    </script>
+  // Charts
+  const labels = results.map(r => r.age);
+  const pensionData = results.map(r => Math.max(0, r.pensionPot));
+  const isaData = results.map(r => Math.max(0, r.isaSavings));
+  const pensionTaxFreeData = results.map(r => r.pensionDrawdownTaxFree || 0);
+  const isaDrawdownData = results.map(r => r.isaDrawdown || 0);
+  const pensionTaxableData = results.map(r => r.pensionDrawdownTaxable || 0);
+  const statePensionData = results.map(r => r.statePension || 0);
+  const lumpSumData = results.map(r => r.lumpSumTaken || 0);
+  const incomeGapData = results.map(r => r.incomeGap || 0);
+
+  if (savingsChart) savingsChart.destroy();
+  if (incomeSourcesChart) incomeSourcesChart.destroy();
+
+  savingsChart = new Chart(document.getElementById('savingsChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Pension Pot', data: pensionData, borderColor: 'rgb(255,99,132)', backgroundColor: 'rgba(255,99,132,0.2)', tension: 0.1, fill: false },
+        { label: 'ISA Savings', data: isaData, borderColor: 'rgb(54,162,235)', backgroundColor: 'rgba(54,162,235,0.2)', tension: 0.1, fill: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { title: { display: true, text: 'Age' } },
+        y: { title: { display: true, text: 'Amount (£)' }, beginAtZero: true }
+      }
+    }
+  });
+
+  incomeSourcesChart = new Chart(document.getElementById('incomeSourcesChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Pension (Tax-Free)',  data: pensionTaxFreeData,  backgroundColor: 'rgba(75,192,192,0.6)',  stack: 'income' },
+        { label: 'ISA Drawdown',        data: isaDrawdownData,      backgroundColor: 'rgba(255,159,64,0.6)', stack: 'income' },
+        { label: 'Pension (Taxable)',   data: pensionTaxableData,   backgroundColor: 'rgba(153,102,255,0.6)',stack: 'income' },
+        { label: 'State Pension',       data: statePensionData,     backgroundColor: 'rgba(255,99,132,0.6)', stack: 'income' },
+        { label: 'Tax-Free Lump Sum',   data: lumpSumData,          backgroundColor: 'rgba(255,206,86,0.8)', stack: 'income' },
+        { label: 'Income Gap',          data: incomeGapData,        backgroundColor: pattern.draw('diagonal', 'rgba(239,68,68,0.15)', 'rgba(239,68,68,0.85)', 8), stack: 'income' }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { stacked: true, title: { display: true, text: 'Age' } },
+        y: { stacked: true, title: { display: true, text: 'Annual Income (£)' }, beginAtZero: true }
+      }
+    }
+  });
+
+  // Table
+  const tbody = document.getElementById('annualBreakdownBody');
+  tbody.innerHTML = '';
+
+  // Find peak pot values to compute depletion ratio
+  const peakPension = Math.max(...results.map(r => r.pensionPot), 1);
+  const peakIsa     = Math.max(...results.map(r => r.isaSavings), 1);
+
+  // Interpolate a colour between green → amber → red based on ratio (1=full, 0=empty)
+  function potColour(value, peak) {
+    if (peak <= 0) return '';
+    const ratio = Math.min(1, Math.max(0, value / peak));
+    if (ratio > 0.5) {
+      // green → amber  (ratio 1→0.5)
+      const t = (ratio - 0.5) / 0.5;
+      const r = Math.round(34  + (251 - 34)  * (1 - t));
+      const g = Math.round(197 + (191 - 197) * (1 - t));
+      const b = Math.round(94  + (36  - 94)  * (1 - t));
+      return `rgba(${r},${g},${b},0.13)`;
+    } else {
+      // amber → red  (ratio 0.5→0)
+      const t = ratio / 0.5;
+      const r = Math.round(239 + (251 - 239) * t);
+      const g = Math.round(68  + (191 - 68)  * t);
+      const b = Math.round(68  + (36  - 68)  * t);
+      return `rgba(${r},${g},${b},0.18)`;
+    }
+  }
+
+  results.forEach(r => {
+    const row = tbody.insertRow();
+    if (r.incomeGap > 0) {
+      row.classList.add('income-gap');
+    }
+    if (r.age === inputs.retirementAge) {
+      row.classList.add('retirement-year');
+    }
+
+    const taxFreeTotal = (r.pensionDrawdownTaxFree || 0) + (r.lumpSumTaken || 0);
+    const hasLumpSum   = (r.lumpSumTaken || 0) > 0;
+    const isRetired    = r.age >= inputs.retirementAge;
+
+    // Col 0 — Age
+    const ageCell = row.insertCell();
+    ageCell.textContent = r.age;
+
+    // Col 1 — Pension Pot
+    const pensionPotCell = row.insertCell();
+    pensionPotCell.textContent = fmt(r.pensionPot);
+    pensionPotCell.className = 'cell-pot';
+    if (isRetired) pensionPotCell.style.backgroundColor = potColour(r.pensionPot, peakPension);
+
+    // Col 2 — ISA Savings
+    const isaCell = row.insertCell();
+    isaCell.textContent = fmt(r.isaSavings);
+    isaCell.className = 'cell-pot';
+    if (isRetired) isaCell.style.backgroundColor = potColour(r.isaSavings, peakIsa);
+
+    // Col 3 — Pension Drawdown (Taxable)
+    const taxableCell = row.insertCell();
+    taxableCell.textContent = fmt(r.pensionDrawdownTaxable || 0);
+    if ((r.pensionDrawdownTaxable || 0) > 0) taxableCell.className = 'cell-pension-taxable';
+
+    // Col 4 — Pension Drawdown (Tax-Free) — tint changes if it's a lump sum year
+    const taxFreeCell = row.insertCell();
+    taxFreeCell.textContent = fmt(taxFreeTotal);
+    if (hasLumpSum)            taxFreeCell.className = 'cell-lumpsum';
+    else if (taxFreeTotal > 0) taxFreeCell.className = 'cell-pension-taxfree';
+
+    // Col 5 — ISA Drawdown
+    const isaDrawCell = row.insertCell();
+    isaDrawCell.textContent = fmt(r.isaDrawdown || 0);
+    if ((r.isaDrawdown || 0) > 0) isaDrawCell.className = 'cell-isa-drawdown';
+
+    // Col 6 — State Pension
+    const spCell = row.insertCell();
+    spCell.textContent = fmt(r.statePension || 0);
+    if ((r.statePension || 0) > 0) spCell.className = 'cell-state-pension';
+
+    // Col 7 — Total Income
+    const totalCell = row.insertCell();
+    if (r.incomeGap > 1) {
+      totalCell.textContent = `${fmt(r.totalIncome)} ⚠️ Gap: ${fmt(r.incomeGap)}`;
+      totalCell.className = 'cell-income-gap';
+    } else if (isRetired && r.incomeNeeded > 0) {
+      const ratio = (r.totalIncome || 0) / r.incomeNeeded;
+      totalCell.textContent = fmt(r.totalIncome || 0);
+      totalCell.className = ratio >= 0.999 ? 'cell-income-ok' : 'cell-income-warn';
+    } else {
+      totalCell.textContent = fmt(r.totalIncome || 0);
+    }
+  });
+}
+
+function fmt(n) {
+  return `£${Math.max(0, n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// ─── Advanced config toggle ─────────────────────────────────────────────────
+
+document.getElementById('advancedConfigToggle').addEventListener('click', function() {
+  const body    = document.getElementById('advancedConfigBody');
+  const chevron = document.getElementById('advancedConfigChevron');
+  const open    = !body.classList.contains('hidden');
+  body.classList.toggle('hidden', open);
+  chevron.textContent = open ? '▼' : '▲';
+});
+
+// ─── Strategy UI wiring ─────────────────────────────────────────────────────
+
+function onStrategyChange() {
+  const strategy = document.querySelector('input[name="strategy"]:checked').value;
+  document.getElementById('strategy2Config').classList.toggle('hidden', strategy !== 'basic_rate');
+  document.getElementById('strategy3Config').style.display = strategy === 'aggressive' ? 'block' : 'none';
+}
+
+document.querySelectorAll('input[name="strategy"]').forEach(r => r.addEventListener('change', onStrategyChange));
+
+document.getElementById('taxJurisdiction').addEventListener('change', function() {
+  const custom = this.value === 'custom';
+  document.getElementById('customBands').style.display = custom ? 'grid' : 'none';
+
+  const info = document.getElementById('jurisdictionInfo');
+  const targetInput = document.getElementById('taxableIncomeTarget');
+  const hint = document.getElementById('taxableTargetHint');
+
+  if (!custom) {
+    const bands = TAX_BANDS[this.value];
+    const bandWidth = bands.basicRateThreshold - bands.personalAllowance;
+    info.textContent = `Personal allowance: £${bands.personalAllowance.toLocaleString()} | Basic rate band: £${bandWidth.toLocaleString()} | Upper threshold: £${bands.basicRateThreshold.toLocaleString()} | Basic rate: ${bands.basicRate * 100}%`;
+    // Default taxable target to the full band width
+    targetInput.value = bandWidth;
+    targetInput.max = bandWidth;
+    hint.textContent = `Max £${bandWidth.toLocaleString()} — the full basic rate band for ${bands.label}. Lower values mean less pension drawn and more reliance on ISA.`;
+  } else {
+    info.textContent = '';
+    targetInput.max = '';
+    hint.textContent = 'Enter your desired taxable income below your chosen basic rate threshold.';
+  }
+});
+
+// Trigger on load to set initial info text
+document.getElementById('taxJurisdiction').dispatchEvent(new Event('change'));
+
+// ─── Form submission ────────────────────────────────────────────────────────
+
+document.getElementById('calculatorForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+
+  const strategy = formData.get('strategy');
+  const jurisdiction = formData.get('taxJurisdiction') || 'england';
+
+  let taxBands;
+  if (jurisdiction === 'custom') {
+    taxBands = {
+      personalAllowance: Number(formData.get('customPersonalAllowance')),
+      basicRateThreshold: Number(formData.get('customBasicRateThreshold')),
+      basicRate: Number(formData.get('customBasicRate')) / 100
+    };
+  } else {
+    taxBands = TAX_BANDS[jurisdiction] || TAX_BANDS.england;
+  }
+
+  const currentAge    = Number(formData.get('currentAge'));
+  const retirementAge = Number(formData.get('retirementAge'));
+
+  // Clamp ages to sensible relationships — silent validation
+  const rawMinAccess      = Number(formData.get('minPensionAccessAge'))  || 57;
+  const rawStatePension   = Number(formData.get('statePensionAge'))      || 67;
+  // Pension access age: must be >= 50, <= retirement age + 20 (can't be impossibly late)
+  const minPensionAccessAge = Math.max(50, Math.min(rawMinAccess, 75));
+  // State pension age: must be >= pension access age, reasonable upper bound
+  const statePensionAge = Math.max(minPensionAccessAge, Math.min(rawStatePension, 80));
+
+  const desiredPostTaxIncome = Number(formData.get('desiredPostTaxIncome'));
+  const rawTaxableTarget = Number(formData.get('taxableIncomeTarget')) || 37700;
+
+  // Validate taxable target doesn't exceed desired income (no point drawing more than you need)
+  const bandWidth = taxBands.basicRateThreshold - taxBands.personalAllowance;
+  const taxableIncomeTarget = Math.min(rawTaxableTarget, bandWidth, desiredPostTaxIncome);
+
+  const inputs = {
+    currentAge,
+    retirementAge,
+    currentPensionSavings: Number(formData.get('currentPensionSavings')),
+    annualPensionContributions: Number(formData.get('annualPensionContributions')),
+    currentIsaSavings: Number(formData.get('currentIsaSavings')),
+    annualIsaContributions: Number(formData.get('annualIsaContributions')),
+    desiredPostTaxIncome,
+    postRetirementIncome: Number(formData.get('postRetirementIncome')),
+    returnRate: Number(formData.get('returnRate')),
+    inflationRate: Number(formData.get('inflationRate')),
+    lumpSumAmount: Number(formData.get('lumpSumAmount')) || 0,
+    strategy,
+    taxBands,
+    taxableIncomeTarget,
+    aggressiveDrawAmount: Number(formData.get('aggressiveDrawAmount')) || 40000,
+    minPensionAccessAge,
+    statePensionAge
+  };
+
+  const { rows: results, lumpSumClamped, lumpSumActual } = calculatePension(inputs);
+  updateResults(results, inputs, lumpSumClamped, lumpSumActual);
+});
+
+// Init UI state
+onStrategyChange();
+</script>
 </body>
-
 </html>
