@@ -176,10 +176,10 @@
         </div>
 
         <div>
-          <input type="radio" id="strat4" name="strategy" value="isa_first" class="strategy-radio">
+          <input type="radio" id="strat4" name="strategy" value="preserve_tax_free" class="strategy-radio">
           <label for="strat4" class="strategy-label">
-            <div class="strategy-name">ISA First</div>
-            <div class="strategy-desc">Draw from ISA before touching pension. Pension access begins at 57 — ISA must bridge any earlier gap.</div>
+            <div class="strategy-name">Preserve Tax-Free Cash</div>
+            <div class="strategy-desc">Hold the tax-free allowance in reserve until state pension age, when it offsets the loss of personal allowance.</div>
           </label>
         </div>
 
@@ -369,87 +369,67 @@ const TAX_BANDS = {
 // ─── Strategy helpers ───────────────────────────────────────────────────────
 
 /**
- * Split a gross pension draw into tax-free and taxable portions.
+ * Two-pot model: the pension is crystallised into taxFreePot (25%) and taxablePot (75%).
+ * Both grow at the same return rate. Every withdrawal draws from both pots in proportion
+ * to their current sizes — so the 25/75 ratio is maintained until one pot runs dry.
  *
- * remainingTaxFreePool:
- *   -1  = pure UFPLS mode: 25% of every draw is tax-free indefinitely
- *   > 0 = fixed pool mode: draw 25% from pool until exhausted, then all taxable
- *   0   = pool exhausted: all taxable
- *
- * Returns { taxFree, taxable, poolUsed }
+ * drawFromPension(amount, taxFreePot, taxablePot)
+ *   Draws `amount` from the two pots proportionally.
+ *   Returns { taxFree, taxable } — the amounts drawn from each pot.
  */
-function splitPensionDraw(amount, remainingTaxFreePool) {
-  if (remainingTaxFreePool === -1) {
-    // Pure UFPLS — 25% always tax-free, no pool to deplete
-    return { taxFree: amount * 0.25, taxable: amount * 0.75, poolUsed: 0 };
-  }
-  if (remainingTaxFreePool <= 0) {
-    // Pool exhausted — all taxable
-    return { taxFree: 0, taxable: amount, poolUsed: 0 };
-  }
-  // Fixed pool — draw 25% of each withdrawal from it until gone
-  const taxFreeDesired = amount * 0.25;
-  const taxFree = Math.min(taxFreeDesired, remainingTaxFreePool);
-  return { taxFree, taxable: amount - taxFree, poolUsed: taxFree };
-}
-
-/**
- * Helper: subtract poolUsed from remainingTaxFreePool, preserving the -1 UFPLS sentinel.
- */
-function reducePool(remainingTaxFreePool, poolUsed) {
-  if (remainingTaxFreePool === -1) return -1;
-  return Math.max(0, remainingTaxFreePool - poolUsed);
+function drawFromPension(amount, taxFreePot, taxablePot) {
+  const total = taxFreePot + taxablePot;
+  if (total <= 0) return { taxFree: 0, taxable: 0 };
+  const draw = Math.min(amount, total);
+  const tfRatio = taxFreePot / total;
+  const taxFree  = Math.min(draw * tfRatio, taxFreePot);
+  const taxable  = Math.min(draw - taxFree, taxablePot);
+  return { taxFree, taxable };
 }
 
 /**
  * STRATEGY 1 – Minimise Income Tax
- * Draw from pension up to the personal allowance only (no income tax).
- * ISA covers any remainder. Pension falls back if ISA is exhausted.
+ * Draw pension up to personal allowance (proportionally from both pots), then ISA,
+ * then more pension if ISA is exhausted.
  */
 function strategyMinimiseTax(state, params) {
-  const { pensionPot, isaSavings, incomeNeeded, inflationFactor, canDrawPension, remainingTaxFreePool } = state;
+  const { taxFreePot, taxablePot, isaSavings, incomeNeeded, inflationFactor, canDrawPension } = state;
   let rem = incomeNeeded;
-  let taxFree = 0, taxable = 0, isa = 0, poolUsed = 0;
+  let taxFree = 0, taxable = 0, isa = 0;
 
-  if (canDrawPension && pensionPot > 0) {
-    const draw = Math.min(params.personalAllowance * inflationFactor, rem, pensionPot);
-    const s = splitPensionDraw(draw, remainingTaxFreePool);
-    taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= draw;
+  if (canDrawPension) {
+    const cap = Math.min(params.personalAllowance * inflationFactor, rem);
+    const d = drawFromPension(cap, taxFreePot, taxablePot);
+    taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
   }
 
   if (rem > 0 && isaSavings > 0) {
     isa = Math.min(isaSavings, rem); rem -= isa;
   }
 
-  // ISA exhausted — fall back to more pension
+  // ISA exhausted — draw remaining need from pension
   if (rem > 0 && canDrawPension) {
-    const used = taxFree + taxable;
-    const extra = Math.min(rem, pensionPot - used);
-    if (extra > 0) {
-      const s = splitPensionDraw(extra, reducePool(remainingTaxFreePool, poolUsed));
-      taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= extra;
-    }
+    const d = drawFromPension(rem, taxFreePot - taxFree, taxablePot - taxable);
+    taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
   }
 
-  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, poolUsed, incomeGap: Math.max(0, rem) };
+  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, incomeGap: Math.max(0, rem) };
 }
 
 /**
  * STRATEGY 2 – Pay Basic Rate Only
- * Draw pension up to (personal allowance + taxable income target), respecting 25/75 split.
- * The gross pension draw = personalAllowance + taxableTarget (in today's money, inflated).
- * ISA covers remainder. No higher-rate tax should be incurred.
+ * Draw pension proportionally up to (personal allowance + taxable target), then ISA,
+ * then more pension if ISA is exhausted.
  */
 function strategyBasicRate(state, params) {
-  const { pensionPot, isaSavings, incomeNeeded, inflationFactor, canDrawPension, remainingTaxFreePool } = state;
+  const { taxFreePot, taxablePot, isaSavings, incomeNeeded, inflationFactor, canDrawPension } = state;
   let rem = incomeNeeded;
-  let taxFree = 0, taxable = 0, isa = 0, poolUsed = 0;
+  let taxFree = 0, taxable = 0, isa = 0;
 
-  if (canDrawPension && pensionPot > 0) {
-    const grossCap = (params.personalAllowance + params.taxableIncomeTarget) * inflationFactor;
-    const draw = Math.min(grossCap, rem, pensionPot);
-    const s = splitPensionDraw(draw, remainingTaxFreePool);
-    taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= draw;
+  if (canDrawPension) {
+    const cap = Math.min((params.personalAllowance + params.taxableIncomeTarget) * inflationFactor, rem);
+    const d = drawFromPension(cap, taxFreePot, taxablePot);
+    taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
   }
 
   if (rem > 0 && isaSavings > 0) {
@@ -457,73 +437,74 @@ function strategyBasicRate(state, params) {
   }
 
   if (rem > 0 && canDrawPension) {
-    const used = taxFree + taxable;
-    const extra = Math.min(rem, pensionPot - used);
-    if (extra > 0) {
-      const s = splitPensionDraw(extra, reducePool(remainingTaxFreePool, poolUsed));
-      taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= extra;
-    }
+    const d = drawFromPension(rem, taxFreePot - taxFree, taxablePot - taxable);
+    taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
   }
 
-  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, poolUsed, incomeGap: Math.max(0, rem) };
+  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, incomeGap: Math.max(0, rem) };
 }
 
 /**
  * STRATEGY 3 – Deplete Pension First
- * Draw up to a gross annual limit from the pension (inflation-adjusted), but never
- * more than the income need. ISA used only once pension is exhausted.
+ * Draw proportionally from pension up to gross annual limit, ISA only once pension
+ * is exhausted.
  */
 function strategyDepletePension(state, params) {
-  const { pensionPot, isaSavings, incomeNeeded, inflationFactor, canDrawPension, remainingTaxFreePool } = state;
+  const { taxFreePot, taxablePot, isaSavings, incomeNeeded, inflationFactor, canDrawPension } = state;
   let rem = incomeNeeded;
-  let taxFree = 0, taxable = 0, isa = 0, poolUsed = 0;
+  let taxFree = 0, taxable = 0, isa = 0;
 
-  if (canDrawPension && pensionPot > 0) {
-    const draw = Math.min(params.aggressiveDrawAmount * inflationFactor, rem, pensionPot);
-    const s = splitPensionDraw(draw, remainingTaxFreePool);
-    taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= draw;
+  if (canDrawPension) {
+    const cap = Math.min(params.aggressiveDrawAmount * inflationFactor, rem);
+    const d = drawFromPension(cap, taxFreePot, taxablePot);
+    taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
   }
 
   if (rem > 0 && isaSavings > 0) {
     isa = Math.min(isaSavings, rem); rem -= isa;
   }
 
+  // ISA exhausted — draw remaining from pension with no cap
   if (rem > 0 && canDrawPension) {
-    const used = taxFree + taxable;
-    const extra = Math.min(rem, pensionPot - used);
-    if (extra > 0) {
-      const s = splitPensionDraw(extra, reducePool(remainingTaxFreePool, poolUsed));
-      taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= extra;
-    }
+    const d = drawFromPension(rem, taxFreePot - taxFree, taxablePot - taxable);
+    taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
   }
 
-  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, poolUsed, incomeGap: Math.max(0, rem) };
+  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, incomeGap: Math.max(0, rem) };
 }
 
 /**
- * STRATEGY 4 – ISA First
- * Draw from ISA before touching pension. Pension not accessible until age 57.
- * If ISA runs out before 57, the shortfall is an income gap.
+ * STRATEGY 4 – Preserve Tax-Free Cash
+ * Before state pension age: draw from taxable pot only + ISA. Tax-free pot grows untouched.
+ * From state pension age: draw proportionally from both pots, then ISA.
+ * Gap shown if taxable + ISA can't cover need pre-state-pension — no fallback to tax-free.
  */
-function strategyIsaFirst(state, params) {
-  const { pensionPot, isaSavings, incomeNeeded, canDrawPension, remainingTaxFreePool } = state;
+function strategyPreserveTaxFree(state, params) {
+  const { taxFreePot, taxablePot, isaSavings, incomeNeeded, canDrawPension, isPreStatePension } = state;
   let rem = incomeNeeded;
-  let taxFree = 0, taxable = 0, isa = 0, poolUsed = 0;
+  let taxFree = 0, taxable = 0, isa = 0;
 
-  if (isaSavings > 0) {
+  if (canDrawPension) {
+    if (isPreStatePension) {
+      // Bridge years — taxable pot only, tax-free preserved
+      const txDraw = Math.min(rem, taxablePot);
+      taxable += txDraw; rem -= txDraw;
+    } else {
+      // State pension age — draw proportionally from both pots
+      const d = drawFromPension(rem, taxFreePot, taxablePot);
+      taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
+    }
+  }
+
+  if (rem > 0 && isaSavings > 0) {
     isa = Math.min(isaSavings, rem); rem -= isa;
   }
 
-  if (rem > 0 && canDrawPension && pensionPot > 0) {
-    const draw = Math.min(rem, pensionPot);
-    const s = splitPensionDraw(draw, remainingTaxFreePool);
-    taxFree += s.taxFree; taxable += s.taxable; poolUsed += s.poolUsed; rem -= draw;
-  }
+  // Pre-state-pension: no fallback to tax-free pot — gap shown strictly
+  // Post-state-pension: pension already drawn above
 
-  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, poolUsed, incomeGap: Math.max(0, rem) };
+  return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, incomeGap: Math.max(0, rem) };
 }
-
-// ─── Main simulation ────────────────────────────────────────────────────────
 
 function calculatePension(inputs) {
   let {
@@ -543,13 +524,13 @@ function calculatePension(inputs) {
   const MIN_PENSION_DRAW_AGE = minPensionAccessAge;
   const STATE_PENSION_AGE = statePensionAge;
 
-  let pensionPot = currentPensionSavings;
+  let pensionPot = currentPensionSavings; // single pot pre-crystallisation
+  let taxFreePot = 0;                     // crystallised at lumpSumYear
+  let taxablePot = 0;                     // crystallised at lumpSumYear
+  let crystallised = false;               // true once pots have been split
   let isaSavings = currentIsaSavings;
-  // Tax-free pool: set at drawdown age once we know the pot size
-  // lumpSumAmount is in today's money; we inflate it at the drawdown year
-  let taxFreePool = null;         // null = not yet initialised
-  let lumpSumActual = 0;          // the real £ taken as upfront lump sum
-  let lumpSumClamped = false;     // did we have to clamp it?
+  let lumpSumActual = 0;
+  let lumpSumClamped = false;
   const annualBreakdown = [];
 
   for (let year = currentAge; year <= 100; year++) {
@@ -563,8 +544,13 @@ function calculatePension(inputs) {
     let lumpSumTaken = 0;
     let incomeGap = 0;
 
-    // Portfolio growth
-    pensionPot *= (1 + returnRate);
+    // Growth — pre-crystallisation: single pot; post: both pots grow independently
+    if (!crystallised) {
+      pensionPot *= (1 + returnRate);
+    } else {
+      taxFreePot *= (1 + returnRate);
+      taxablePot *= (1 + returnRate);
+    }
     isaSavings *= (1 + returnRate);
 
     // Contributions before retirement
@@ -577,22 +563,20 @@ function calculatePension(inputs) {
       const incomeNeeded = desiredPostTaxIncome * inflationFactor;
       const lumpSumYear = Math.max(retirementAge, MIN_PENSION_DRAW_AGE);
 
-      // Initialise tax-free pool and take upfront lump sum on the first drawdown year
-      if (year === lumpSumYear && taxFreePool === null) {
+      // Crystallise into two pots at the lump sum year
+      if (year === lumpSumYear && !crystallised) {
         const maxLumpSum = pensionPot * 0.25;
         const desiredLumpSum = lumpSumAmount * inflationFactor;
         lumpSumActual = Math.min(desiredLumpSum, maxLumpSum);
-        lumpSumClamped = desiredLumpSum > maxLumpSum + 1; // £1 tolerance
-        pensionPot -= lumpSumActual;
-        // If no lump sum taken, use pure UFPLS (-1 sentinel = 25% of every draw, indefinitely)
-        // Otherwise track the remaining fixed pool
-        taxFreePool = lumpSumActual > 0 ? (maxLumpSum - lumpSumActual) : -1;
+        lumpSumClamped = desiredLumpSum > maxLumpSum + 1;
+        // Tax-free pot = 25% of pot minus lump sum taken; taxable pot = remaining 75%
+        taxFreePot = maxLumpSum - lumpSumActual;
+        taxablePot = pensionPot - maxLumpSum;
+        pensionPot = 0; // fully crystallised
+        crystallised = true;
       }
 
-      // Ensure pool is initialised (e.g. if retirementAge < MIN_PENSION_DRAW_AGE, first year may differ)
-      const remainingTaxFreePool = taxFreePool !== null ? taxFreePool : 0;
-
-      // Record the lump sum for the table/chart (only non-zero in the year it's taken)
+      // Record lump sum for chart/table (only in the year taken)
       lumpSumTaken = (year === lumpSumYear) ? lumpSumActual : 0;
 
       // State pension
@@ -603,34 +587,30 @@ function calculatePension(inputs) {
       const remainingAfterStatePension = Math.max(0, incomeNeeded - statePension);
       const canDrawPension = year >= MIN_PENSION_DRAW_AGE;
 
-      // In the lump sum year, pension drawdown proceeds normally but the tax-free
-      // pool is treated as 0 — the lump sum has already used the tax-free allowance
-      // for that year. The pool is available from the following year onward.
-      const isLumpSumYear = lumpSumActual > 0 && year === lumpSumYear;
-
       // Dispatch to strategy
       const strategyState = {
-        pensionPot,
+        taxFreePot:        crystallised ? taxFreePot : 0,
+        taxablePot:        crystallised ? taxablePot : pensionPot,
         isaSavings,
-        incomeNeeded: remainingAfterStatePension,
+        incomeNeeded:      remainingAfterStatePension,
         inflationFactor,
         canDrawPension,
-        remainingTaxFreePool: isLumpSumYear ? 0 : remainingTaxFreePool
+        isPreStatePension: year < STATE_PENSION_AGE
       };
 
       const strategyParams = {
-        personalAllowance: taxBands.personalAllowance,
-        basicRateThreshold: taxBands.basicRateThreshold,
+        personalAllowance:    taxBands.personalAllowance,
+        basicRateThreshold:   taxBands.basicRateThreshold,
         taxableIncomeTarget,
         aggressiveDrawAmount
       };
 
       let result;
       switch (strategy) {
-        case 'basic_rate':   result = strategyBasicRate(strategyState, strategyParams); break;
-        case 'aggressive':   result = strategyDepletePension(strategyState, strategyParams); break;
-        case 'isa_first':    result = strategyIsaFirst(strategyState, strategyParams); break;
-        default:             result = strategyMinimiseTax(strategyState, strategyParams); break;
+        case 'basic_rate':        result = strategyBasicRate(strategyState, strategyParams); break;
+        case 'aggressive':        result = strategyDepletePension(strategyState, strategyParams); break;
+        case 'preserve_tax_free': result = strategyPreserveTaxFree(strategyState, strategyParams); break;
+        default:                  result = strategyMinimiseTax(strategyState, strategyParams); break;
       }
 
       annualPensionDrawdownTaxFree = result.pensionDrawTaxFree;
@@ -638,34 +618,33 @@ function calculatePension(inputs) {
       annualIsaDrawdown = result.isaDrawdown;
       incomeGap = result.incomeGap;
 
-      // Decrement the fixed pool. Skip if null (not yet initialised) or -1 (pure UFPLS — never depletes)
-      if (taxFreePool !== null && taxFreePool !== -1) {
-        taxFreePool = Math.max(0, taxFreePool - (result.poolUsed || 0));
+      // Deduct from the correct pots
+      if (crystallised) {
+        taxFreePot  = Math.max(0, taxFreePot  - annualPensionDrawdownTaxFree);
+        taxablePot  = Math.max(0, taxablePot  - annualPensionDrawdownTaxable);
+      } else {
+        pensionPot  = Math.max(0, pensionPot  - annualPensionDrawdownTaxFree - annualPensionDrawdownTaxable);
       }
+      isaSavings = Math.max(0, isaSavings - annualIsaDrawdown);
 
-      pensionPot -= (annualPensionDrawdownTaxFree + annualPensionDrawdownTaxable);
-      isaSavings -= annualIsaDrawdown;
-      pensionPot = Math.max(0, pensionPot);
-      isaSavings = Math.max(0, isaSavings);
-
+      const combinedPensionPot = crystallised ? taxFreePot + taxablePot : pensionPot;
       const totalIncome = annualPensionDrawdownTaxFree + annualPensionDrawdownTaxable + annualIsaDrawdown + statePension;
 
-      // Distinguish why there's an income gap:
-      // 'access_gap' = pension exists but isn't accessible yet (pre-57, ISA depleted)
-      // 'funds_exhausted' = both pots are genuinely empty
+      // Distinguish income gap reason
       let incomeGapReason = null;
       if (incomeGap > 1) {
-        if (!canDrawPension && pensionPot > 1) {
+        if (!canDrawPension && combinedPensionPot > 1) {
           incomeGapReason = 'access_gap';
         } else {
-          // Covers: both pots empty, pension nearly empty, or canDrawPension but nothing left
           incomeGapReason = 'funds_exhausted';
         }
       }
 
       const rowData = {
         age: year,
-        pensionPot,
+        pensionPot: combinedPensionPot,
+        taxFreePot: crystallised ? taxFreePot : 0,
+        taxablePot: crystallised ? taxablePot : pensionPot,
         isaSavings,
         pensionDrawdownTaxable: annualPensionDrawdownTaxable,
         pensionDrawdownTaxFree: annualPensionDrawdownTaxFree,
@@ -678,16 +657,16 @@ function calculatePension(inputs) {
         incomeNeeded
       };
 
-      if (pensionPot <= 0 && isaSavings <= 0 && incomeGap > 0 && year > retirementAge) {
+      if (combinedPensionPot <= 0 && isaSavings <= 0 && incomeGap > 0 && year > retirementAge) {
         annualBreakdown.push({ ...rowData, fundsRunOut: true });
         break;
       }
 
       annualBreakdown.push(rowData);
     } else {
-      // Accumulation phase — still record the row
+      // Accumulation phase
       annualBreakdown.push({
-        age: year, pensionPot, isaSavings,
+        age: year, pensionPot, taxFreePot: 0, taxablePot: 0, isaSavings,
         pensionDrawdownTaxable: 0, pensionDrawdownTaxFree: 0,
         isaDrawdown: 0, statePension: 0, lumpSumTaken: 0,
         totalIncome: 0, incomeGap: 0, incomeNeeded: 0
@@ -703,10 +682,10 @@ function calculatePension(inputs) {
 let savingsChart, incomeSourcesChart;
 
 const STRATEGY_NAMES = {
-  minimise_tax: 'Minimise Income Tax',
-  basic_rate: 'Pay Basic Rate Only',
-  aggressive: 'Deplete Pension First',
-  isa_first: 'ISA First'
+  minimise_tax:      'Minimise Income Tax',
+  basic_rate:        'Pay Basic Rate Only',
+  aggressive:        'Deplete Pension First',
+  preserve_tax_free: 'Preserve Tax-Free Cash'
 };
 
 function updateResults(results, inputs, lumpSumClamped, lumpSumActual) {
