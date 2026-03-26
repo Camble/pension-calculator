@@ -381,8 +381,8 @@ function drawFromPension(amount, taxFreePot, taxablePot) {
   const total = taxFreePot + taxablePot;
   if (total <= 0) return { taxFree: 0, taxable: 0 };
   const draw = Math.min(amount, total);
-  const tfRatio = taxFreePot / total;
-  const taxFree  = Math.min(draw * tfRatio, taxFreePot);
+  // Tax-free portion is capped at 25% of the draw, and also capped by what's available
+  const taxFree  = Math.min(draw * 0.25, taxFreePot);
   const taxable  = Math.min(draw - taxFree, taxablePot);
   return { taxFree, taxable };
 }
@@ -475,9 +475,11 @@ function strategyDepletePension(state, params) {
 
 /**
  * STRATEGY 4 – Preserve Tax-Free Cash
- * Before state pension age: draw from taxable pot only + ISA. Tax-free pot grows untouched.
- * From state pension age: draw proportionally from both pots, then ISA.
- * Gap shown if taxable + ISA can't cover need pre-state-pension — no fallback to tax-free.
+ * Before state pension age: draw from taxable pot only, then ISA. Tax-free pot grows untouched.
+ *   No fallback to tax-free — gap shown strictly if taxable + ISA can't cover need.
+ * From state pension age: draw proportionally from both pots (preserving the natural 25/75
+ *   tax-free/taxable ratio), then ISA for any shortfall. This mirrors UFPLS semantics on
+ *   the remaining pension — the ratio self-corrects as pot sizes shift over time.
  */
 function strategyPreserveTaxFree(state, params) {
   const { taxFreePot, taxablePot, isaSavings, incomeNeeded, canDrawPension, isPreStatePension } = state;
@@ -486,22 +488,23 @@ function strategyPreserveTaxFree(state, params) {
 
   if (canDrawPension) {
     if (isPreStatePension) {
-      // Bridge years — taxable pot only, tax-free preserved
+      // Bridge years — taxable pot only, tax-free preserved entirely
       const txDraw = Math.min(rem, taxablePot);
       taxable += txDraw; rem -= txDraw;
     } else {
-      // State pension age — draw proportionally from both pots
+      // Post-state-pension — draw proportionally from both pots
       const d = drawFromPension(rem, taxFreePot, taxablePot);
       taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
     }
   }
 
+  // ISA covers any remaining shortfall (both phases)
   if (rem > 0 && isaSavings > 0) {
     isa = Math.min(isaSavings, rem); rem -= isa;
   }
 
   // Pre-state-pension: no fallback to tax-free pot — gap shown strictly
-  // Post-state-pension: pension already drawn above
+  // Post-state-pension: if both pots + ISA exhausted, gap is funds_exhausted
 
   return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, incomeGap: Math.max(0, rem) };
 }
@@ -587,9 +590,14 @@ function calculatePension(inputs) {
       const remainingAfterStatePension = Math.max(0, incomeNeeded - statePension);
       const canDrawPension = year >= MIN_PENSION_DRAW_AGE;
 
+      // In the lump sum year, the full 25% tax-free allowance has already been used
+      // (partly or wholly) by the lump sum itself. Suppress the tax-free pot so the
+      // strategy doesn't double-dip on it in the same year.
+      const isLumpSumYear = lumpSumActual > 0 && year === lumpSumYear;
+
       // Dispatch to strategy
       const strategyState = {
-        taxFreePot:        crystallised ? taxFreePot : 0,
+        taxFreePot:        (crystallised && !isLumpSumYear) ? taxFreePot : 0,
         taxablePot:        crystallised ? taxablePot : pensionPot,
         isaSavings,
         incomeNeeded:      remainingAfterStatePension,
@@ -635,6 +643,9 @@ function calculatePension(inputs) {
       if (incomeGap > 1) {
         if (!canDrawPension && combinedPensionPot > 1) {
           incomeGapReason = 'access_gap';
+        } else if (strategy === 'preserve_tax_free' && taxFreePot > 1) {
+          // Gap is a deliberate consequence of preserving the tax-free pot, not exhaustion
+          incomeGapReason = 'strategy_gap';
         } else {
           incomeGapReason = 'funds_exhausted';
         }
@@ -734,6 +745,7 @@ function updateResults(results, inputs, lumpSumClamped, lumpSumActual) {
   const gapWarning = document.getElementById('incomeGapWarning');
   const accessGapYears    = results.filter(r => r.incomeGapReason === 'access_gap');
   const exhaustedGapYears = results.filter(r => r.incomeGapReason === 'funds_exhausted');
+  const strategyGapYears  = results.filter(r => r.incomeGapReason === 'strategy_gap');
 
   const messages = [];
   if (accessGapYears.length > 0) {
@@ -741,6 +753,13 @@ function updateResults(results, inputs, lumpSumClamped, lumpSumActual) {
     const ageStr = ages.length === 1 ? `age ${ages[0]}` : `ages ${ages[0]}\u2013${ages[ages.length - 1]}`;
     const totalShortfall = accessGapYears.reduce((sum, r) => sum + r.incomeGap, 0);
     messages.push(`Your ISA runs out before your pension becomes accessible at age ${inputs.minPensionAccessAge}. There is a shortfall at ${ageStr}. You would need approximately ${fmt(totalShortfall)} more in ISA savings (in today\u2019s money) to bridge this gap \u2014 consider increasing your annual ISA contributions.`);
+  }
+  if (strategyGapYears.length > 0) {
+    const ages = strategyGapYears.map(r => r.age);
+    const ageStr = ages.length === 1 ? `age ${ages[0]}` : `ages ${ages[0]}\u2013${ages[ages.length - 1]}`;
+    const totalShortfall = strategyGapYears.reduce((sum, r) => sum + r.incomeGap, 0);
+    const peakTaxFree = Math.max(...strategyGapYears.map(r => r.taxFreePot));
+    messages.push(`\u26a0\ufe0f Income shortfall at ${ageStr} (total ${fmt(totalShortfall)}) while using the Preserve Tax-Free Cash strategy. Your tax-free pot (peak ${fmt(peakTaxFree)}) is being held in reserve until state pension age \u2014 this shortfall is a deliberate consequence of that choice. Consider increasing ISA contributions or accepting a later state pension age to bridge the gap.`);
   }
   if (exhaustedGapYears.length > 0) {
     const firstAge = exhaustedGapYears[0].age;
