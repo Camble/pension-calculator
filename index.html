@@ -482,14 +482,16 @@ function strategyDepletePension(state, params) {
  *   the remaining pension — the ratio self-corrects as pot sizes shift over time.
  */
 function strategyPreserveTaxFree(state, params) {
-  const { taxFreePot, taxablePot, isaSavings, incomeNeeded, canDrawPension, isPreStatePension } = state;
+  const { taxFreePot, taxablePot, isaSavings, incomeNeeded, inflationFactor, canDrawPension, isPreStatePension } = state;
   let rem = incomeNeeded;
   let taxFree = 0, taxable = 0, isa = 0;
 
   if (canDrawPension) {
-    if (isPreStatePension) {
-      // Bridge years — taxable pot only, tax-free preserved entirely
-      const txDraw = Math.min(rem, taxablePot);
+   if (isPreStatePension) {
+      // Bridge years — taxable pot only, capped at personal allowance (no income tax).
+      // Tax-free pot is preserved entirely.
+      const cap = Math.min(params.personalAllowance * inflationFactor, rem);
+      const txDraw = Math.min(cap, taxablePot);
       taxable += txDraw; rem -= txDraw;
     } else {
       // Post-state-pension — draw proportionally from both pots
@@ -503,7 +505,7 @@ function strategyPreserveTaxFree(state, params) {
     isa = Math.min(isaSavings, rem); rem -= isa;
   }
 
-  // Pre-state-pension: no fallback to tax-free pot — gap shown strictly
+  // Pre-state-pension: no fallback to tax-free pot — gap shown strictly if ISA also exhausted
   // Post-state-pension: if both pots + ISA exhausted, gap is funds_exhausted
 
   return { pensionDrawTaxFree: taxFree, pensionDrawTaxable: taxable, isaDrawdown: isa, incomeGap: Math.max(0, rem) };
