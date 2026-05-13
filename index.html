@@ -381,8 +381,8 @@ function drawFromPension(amount, taxFreePot, taxablePot) {
   const total = taxFreePot + taxablePot;
   if (total <= 0) return { taxFree: 0, taxable: 0 };
   const draw = Math.min(amount, total);
-  // Tax-free portion is capped at 25% of the draw, and also capped by what's available
-  const taxFree  = Math.min(draw * 0.25, taxFreePot);
+  const ratio = taxFreePot / total;           // actual current ratio
+  const taxFree  = Math.min(draw * ratio, taxFreePot);
   const taxable  = Math.min(draw - taxFree, taxablePot);
   return { taxFree, taxable };
 }
