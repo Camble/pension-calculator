@@ -978,47 +978,10 @@ document.getElementById('advancedConfigToggle').addEventListener('click', functi
   chevron.textContent = open ? '▼' : '▲';
 });
 
-// ─── Strategy UI wiring ─────────────────────────────────────────────────────
+// ─── Calculation ────────────────────────────────────────────────────────────
 
-function onStrategyChange() {
-  const strategy = document.querySelector('input[name="strategy"]:checked').value;
-  document.getElementById('strategy2Config').classList.toggle('hidden', strategy !== 'basic_rate');
-  document.getElementById('strategy3Config').style.display = strategy === 'aggressive' ? 'block' : 'none';
-}
-
-document.querySelectorAll('input[name="strategy"]').forEach(r => r.addEventListener('change', onStrategyChange));
-
-document.getElementById('taxJurisdiction').addEventListener('change', function() {
-  const custom = this.value === 'custom';
-  document.getElementById('customBands').style.display = custom ? 'grid' : 'none';
-
-  const info = document.getElementById('jurisdictionInfo');
-  const targetInput = document.getElementById('taxableIncomeTarget');
-  const hint = document.getElementById('taxableTargetHint');
-
-  if (!custom) {
-    const bands = TAX_BANDS[this.value];
-    const bandWidth = bands.basicRateThreshold - bands.personalAllowance;
-    info.textContent = `Personal allowance: £${bands.personalAllowance.toLocaleString()} | Basic rate band: £${bandWidth.toLocaleString()} | Upper threshold: £${bands.basicRateThreshold.toLocaleString()} | Basic rate: ${bands.basicRate * 100}%`;
-    // Default taxable target to the full band width
-    targetInput.value = bandWidth;
-    targetInput.max = bandWidth;
-    hint.textContent = `Max £${bandWidth.toLocaleString()} — the full basic rate band for ${bands.label}. Lower values mean less pension drawn and more reliance on ISA.`;
-  } else {
-    info.textContent = '';
-    targetInput.max = '';
-    hint.textContent = 'Enter your desired taxable income below your chosen basic rate threshold.';
-  }
-});
-
-// Trigger on load to set initial info text
-document.getElementById('taxJurisdiction').dispatchEvent(new Event('change'));
-
-// ─── Form submission ────────────────────────────────────────────────────────
-
-document.getElementById('calculatorForm').addEventListener('submit', function(e) {
-  e.preventDefault();
-  const formData = new FormData(e.target);
+function runCalculation() {
+  const formData = new FormData(document.getElementById('calculatorForm'));
 
   const strategy = formData.get('strategy');
   const jurisdiction = formData.get('taxJurisdiction') || 'england';
@@ -1074,6 +1037,56 @@ document.getElementById('calculatorForm').addEventListener('submit', function(e)
 
   const { rows: results, lumpSumClamped, lumpSumActual } = calculatePension(inputs);
   updateResults(results, inputs, lumpSumClamped, lumpSumActual);
+}
+
+// ─── Strategy UI wiring ─────────────────────────────────────────────────────
+
+function onStrategyChange() {
+  const strategy = document.querySelector('input[name="strategy"]:checked').value;
+  document.getElementById('strategy2Config').classList.toggle('hidden', strategy !== 'basic_rate');
+  document.getElementById('strategy3Config').style.display = strategy === 'aggressive' ? 'block' : 'none';
+
+  // If results are already showing, re-run immediately so the graphs/table reflect
+  // the newly selected strategy — otherwise they'd silently keep showing stale data
+  // from whichever strategy was last submitted, until Calculate is clicked again.
+  if (!document.getElementById('results').classList.contains('hidden')) {
+    runCalculation();
+  }
+}
+
+document.querySelectorAll('input[name="strategy"]').forEach(r => r.addEventListener('change', onStrategyChange));
+
+document.getElementById('taxJurisdiction').addEventListener('change', function() {
+  const custom = this.value === 'custom';
+  document.getElementById('customBands').style.display = custom ? 'grid' : 'none';
+
+  const info = document.getElementById('jurisdictionInfo');
+  const targetInput = document.getElementById('taxableIncomeTarget');
+  const hint = document.getElementById('taxableTargetHint');
+
+  if (!custom) {
+    const bands = TAX_BANDS[this.value];
+    const bandWidth = bands.basicRateThreshold - bands.personalAllowance;
+    info.textContent = `Personal allowance: £${bands.personalAllowance.toLocaleString()} | Basic rate band: £${bandWidth.toLocaleString()} | Upper threshold: £${bands.basicRateThreshold.toLocaleString()} | Basic rate: ${bands.basicRate * 100}%`;
+    // Default taxable target to the full band width
+    targetInput.value = bandWidth;
+    targetInput.max = bandWidth;
+    hint.textContent = `Max £${bandWidth.toLocaleString()} — the full basic rate band for ${bands.label}. Lower values mean less pension drawn and more reliance on ISA.`;
+  } else {
+    info.textContent = '';
+    targetInput.max = '';
+    hint.textContent = 'Enter your desired taxable income below your chosen basic rate threshold.';
+  }
+});
+
+// Trigger on load to set initial info text
+document.getElementById('taxJurisdiction').dispatchEvent(new Event('change'));
+
+// ─── Form submission ────────────────────────────────────────────────────────
+
+document.getElementById('calculatorForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  runCalculation();
 });
 
 // Init UI state
