@@ -388,6 +388,25 @@ function drawFromPension(amount, taxFreePot, taxablePot) {
 }
 
 /**
+ * Inverse of drawFromPension: given a target *taxable* amount (e.g. "draw up to the
+ * personal allowance"), work out the gross draw needed so the taxable portion that
+ * comes out the other end of the proportional split actually equals that target —
+ * rather than treating the target as the gross draw itself (which under-delivers
+ * taxable income, since only ~75% of a gross draw is taxable).
+ *
+ * Caller is still responsible for clamping the result against `rem` and pot size —
+ * drawFromPension already clamps internally, so passing a value larger than the
+ * pots simply drains them.
+ */
+function drawForTargetTaxable(targetTaxable, taxFreePot, taxablePot) {
+  if (targetTaxable <= 0 || taxablePot <= 0) return 0;
+  const total = taxFreePot + taxablePot;
+  if (total <= 0) return 0;
+  const taxableRatio = taxablePot / total;
+  return targetTaxable / taxableRatio;
+}
+
+/**
  * STRATEGY 1 – Minimise Income Tax
  * Draw pension up to personal allowance (proportionally from both pots), then ISA,
  * then more pension if ISA is exhausted.
@@ -398,7 +417,9 @@ function strategyMinimiseTax(state, params) {
   let taxFree = 0, taxable = 0, isa = 0;
 
   if (canDrawPension) {
-    const cap = Math.min(params.personalAllowance * inflationFactor, rem);
+    const targetTaxable = params.personalAllowance * inflationFactor;
+    const grossNeeded = drawForTargetTaxable(targetTaxable, taxFreePot, taxablePot);
+    const cap = Math.min(grossNeeded, rem, taxFreePot + taxablePot);
     const d = drawFromPension(cap, taxFreePot, taxablePot);
     taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
   }
@@ -427,7 +448,9 @@ function strategyBasicRate(state, params) {
   let taxFree = 0, taxable = 0, isa = 0;
 
   if (canDrawPension) {
-    const cap = Math.min((params.personalAllowance + params.taxableIncomeTarget) * inflationFactor, rem);
+    const targetTaxable = (params.personalAllowance + params.taxableIncomeTarget) * inflationFactor;
+    const grossNeeded = drawForTargetTaxable(targetTaxable, taxFreePot, taxablePot);
+    const cap = Math.min(grossNeeded, rem, taxFreePot + taxablePot);
     const d = drawFromPension(cap, taxFreePot, taxablePot);
     taxFree += d.taxFree; taxable += d.taxable; rem -= (d.taxFree + d.taxable);
   }
@@ -803,6 +826,15 @@ function updateResults(results, inputs, lumpSumClamped, lumpSumActual) {
       scales: {
         x: { title: { display: true, text: 'Age' } },
         y: { title: { display: true, text: 'Amount (£)' }, beginAtZero: true }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `${context.dataset.label}: ${fmt(context.parsed.y)}`;
+            }
+          }
+        }
       }
     }
   });
@@ -825,6 +857,15 @@ function updateResults(results, inputs, lumpSumClamped, lumpSumActual) {
       scales: {
         x: { stacked: true, title: { display: true, text: 'Age' } },
         y: { stacked: true, title: { display: true, text: 'Annual Income (£)' }, beginAtZero: true }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `${context.dataset.label}: ${fmt(context.parsed.y)}`;
+            }
+          }
+        }
       }
     }
   });
